@@ -1,0 +1,14 @@
+{
+  "name": "skapi-memoji",
+  "version": "1.0.0",
+  "description": "Instagram-like photo app that turns faces into cute 3D animal memoji. Plain HTML + JavaScript on Skapi.",
+  "main": "index.html",
+  "private": true,
+  "scripts": {
+    "dev": "npx bns port=4000"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "basic-node-server": "^1.1.1"
+  }
+}

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>memoji</title>
+    <meta name="description" content="Snap a photo and every face turns into a cute 3D animal memoji. Share it, like, comment and follow.">
+    <meta name="theme-color" content="#fff8f3">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="app.css">
+    <script src="https://cdn.jsdelivr.net/npm/skapi-js@2.4.2/dist/skapi.js"></script>
+    <script src="service.js"></script>
+    <!--
+        three.js (WebGL) renders the memoji, MediaPipe Tasks Vision (WebAssembly + WebGL) tracks the faces.
+        Both are ES modules from a CDN, pinned to exact versions.
+    -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+                "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/vision_bundle.mjs"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <!-- Icons -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.4-9.2-9.3C1.6 7.7 3.9 4.5 7.3 4.5c2 0 3.5 1.1 4.7 2.7 1.2-1.6 2.7-2.7 4.7-2.7 3.4 0 5.7 3.2 4.5 6.7-1.7 4.9-9.2 9.3-9.2 9.3z"/></symbol>
+        <symbol id="i-comment" viewBox="0 0 24 24"><path d="M12 3.5c-5 0-9 3.4-9 7.7 0 2.4 1.3 4.6 3.3 6l-.8 3.3 3.8-2c.9.3 1.8.4 2.7.4 5 0 9-3.4 9-7.7s-4-7.7-9-7.7z"/></symbol>
+        <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/></symbol>
+        <symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 21.5c-4 0-7-2.8-7-6.6 0-3.4 2.4-5.6 4-7.9.5 1.6 1.4 2.6 2.4 3 .1-3.2 1.5-5.8 4-7.5-.3 2.6.8 4.5 2.2 6.3 1.3 1.6 2.4 3.4 2.4 6 0 3.9-3.2 6.7-8 6.7z"/></symbol>
+        <symbol id="i-bell" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.5c-.4.7.1 1.5.9 1.5h13.6c.8 0 1.3-.8.9-1.5L18 12.6V9a6 6 0 0 0-6-6zm-2.5 15.5a2.5 2.5 0 0 0 5 0z"/></symbol>
+        <symbol id="i-user" viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 1.8c-4.4 0-8 2.5-8 5.7 0 .8.6 1.5 1.5 1.5h13c.8 0 1.5-.7 1.5-1.5 0-3.2-3.6-5.7-8-5.7z"/></symbol>
+        <symbol id="i-camera" viewBox="0 0 24 24"><path d="M9 4.5 7.6 6.5H5A2.5 2.5 0 0 0 2.5 9v8.5A2.5 2.5 0 0 0 5 20h14a2.5 2.5 0 0 0 2.5-2.5V9A2.5 2.5 0 0 0 19 6.5h-2.6L15 4.5zM12 17a4.2 4.2 0 1 1 0-8.4 4.2 4.2 0 0 1 0 8.4z"/></symbol>
+        <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4z"/></symbol>
+        <symbol id="i-flip" viewBox="0 0 24 24"><path d="M7 7h9.2l-2-2L15.6 3.6 20 8l-4.4 4.4-1.4-1.4 2-2H7a3 3 0 0 0-3 3v1H2v-1a5 5 0 0 1 5-5zm10 10H7.8l2 2-1.4 1.4L4 16l4.4-4.4 1.4 1.4-2 2H17a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5z"/></symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 1h2v3h-2zm0 19h2v3h-2zM1 11h3v2H1zm19 0h3v2h-3zM4.2 5.6l1.4-1.4 2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></symbol>
+        <symbol id="i-dice" viewBox="0 0 24 24"><path d="M6 3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zm2 3.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm-4 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm-4 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></symbol>
+        <symbol id="i-image" viewBox="0 0 24 24"><path d="M5 3.5h14A2.5 2.5 0 0 1 21.5 6v12a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 18V6A2.5 2.5 0 0 1 5 3.5zm3.5 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM4.5 17.5h15l-4.8-6.4-3.6 4.6-2.5-2.9z"/></symbol>
+        <symbol id="i-back" viewBox="0 0 24 24"><path d="M15.4 4 17 5.6 10.6 12l6.4 6.4-1.6 1.6-8-8z"/></symbol>
+        <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></symbol>
+        <symbol id="i-lock" viewBox="0 0 24 24"><path d="M12 2.5a5 5 0 0 0-5 5V10H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7.5a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0V10H9z"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></symbol>
+        <symbol id="i-cube" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7zm0 2.3L5.6 7.8 12 11.3l6.4-3.5zM5 9.5v6.3l6 3.3v-6.3zm14 0-6 3.3v6.3l6-3.3z"/></symbol>
+    </svg>
+
+    <header class="topbar">
+        <a class="logo" href="index.html" aria-label="memoji home"><span class="logo-paw" aria-hidden="true">🐾</span>memoji</a>
+        <div class="topbar-actions">
+            <button type="button" class="icon-btn" id="topActivityButton" aria-label="Activity">
+                <svg><use href="#i-bell"/></svg><span class="badge" hidden></span>
+            </button>
+            <button type="button" class="me-btn" id="topMeButton" aria-label="Your profile">
+                <img class="avatar sm" alt="" data-me-avatar>
+            </button>
+        </div>
+    </header>
+
+    <!-- The links change the URL hash, and the hash decides which posts are fetched (initialFetch() in app.js). -->
+    <nav class="tabs" aria-label="Post filters">
+        <a href="#" data-hash="">Recent</a>
+        <a href="#mostliked" data-hash="mostliked">Most liked</a>
+        <a href="#mostcomment" data-hash="mostcomment">Most commented</a>
+        <a href="#feed" data-hash="feed">Following</a>
+        <a href="#myposts" data-hash="myposts">My posts</a>
+        <a href="#myprivate" data-hash="myprivate">Private</a>
+    </nav>
+
+    <main class="feed-wrap">
+        <div class="view-head">
+            <h1 id="postsHeading">Recent</h1>
+            <div id="viewExtra"></div>
+        </div>
+        <div id="section_posts" aria-live="polite">
+            <p class="empty">Loading posts…</p>
+        </div>
+        <button type="button" class="btn ghost wide" id="fetchMoreButton" disabled>Load more</button>
+    </main>
+
+    <nav class="bottombar" aria-label="Main">
+        <a href="#" data-hash="" aria-label="Home"><svg><use href="#i-home"/></svg></a>
+        <a href="#mostliked" data-hash="mostliked" aria-label="Most liked"><svg><use href="#i-fire"/></svg></a>
+        <button type="button" class="shoot" id="openCameraButton" aria-label="Take a memoji photo"><svg><use href="#i-camera"/></svg></button>
+        <button type="button" id="activityButton" aria-label="Activity"><svg><use href="#i-bell"/></svg><span class="badge" hidden></span></button>
+        <button type="button" id="meButton" aria-label="Your profile"><img class="avatar xs" alt="" data-me-avatar></button>
+    </nav>
+
+    <!-- ===================================================== camera -->
+    <section class="sheet camera" id="cameraSheet" hidden aria-label="Memoji camera">
+        <div class="cam-top">
+            <button type="button" class="cam-btn" id="closeCameraButton" aria-label="Close camera"><svg><use href="#i-close"/></svg></button>
+            <div class="cam-title" id="camStatus" role="status">memoji cam</div>
+            <div class="cam-top-right">
+                <button type="button" class="cam-btn on" id="lightButton" aria-pressed="true" title="Match the memoji to your lighting"><svg><use href="#i-sun"/></svg></button>
+                <button type="button" class="cam-btn" id="flipButton" aria-label="Switch camera"><svg><use href="#i-flip"/></svg></button>
+            </div>
+        </div>
+
+        <div class="viewfinder-wrap">
+            <div class="viewfinder" id="viewfinder">
+                <div class="cam-hint" id="camHint">Starting camera…</div>
+            </div>
+        </div>
+
+        <div class="fit-panel" id="fitPanel" hidden>
+            <p><strong>Fit your model</strong> <small>(saved to your model)</small></p>
+            <label>Size <input type="range" id="fitScale" min="0.4" max="2.2" step="0.01"></label>
+            <label>Up / down <input type="range" id="fitY" min="-1" max="1" step="0.01"></label>
+            <label>Forward / back <input type="range" id="fitZ" min="-1" max="1" step="0.01"></label>
+            <label>Turn <input type="range" id="fitRY" min="-3.1416" max="3.1416" step="0.01"></label>
+        </div>
+
+        <div class="spirit-strip" id="spiritStrip" role="radiogroup" aria-label="Your spirit animal"></div>
+
+        <div class="cam-controls">
+            <label class="cam-side" title="Turn a photo from your gallery into memoji">
+                <input type="file" accept="image/*" id="galleryInput" hidden>
+                <span class="cam-round"><svg><use href="#i-image"/></svg></span>
+                <span>Gallery</span>
+            </label>
+            <button type="button" class="shutter" id="shutterButton" aria-label="Take photo" disabled><span></span></button>
+            <button type="button" class="cam-side" id="shuffleButton" title="Give everyone else a new random animal">
+                <span class="cam-round"><svg><use href="#i-dice"/></svg></span>
+                <span>Shuffle</span>
+            </button>
+        </div>
+        <button type="button" class="back-to-cam" id="backToCameraButton" hidden>Back to the live camera</button>
+    </section>
+
+    <!-- ===================================================== compose -->
+    <section class="sheet compose" id="composeSheet" hidden aria-label="New post">
+        <header class="sheet-head">
+            <button type="button" class="icon-btn" id="composeBackButton" aria-label="Retake"><svg><use href="#i-back"/></svg></button>
+            <h2>New memoji</h2>
+            <span class="spacer"></span>
+        </header>
+        <div class="compose-body">
+            <img id="img_preview" alt="Your memoji photo">
+            <p class="compose-animals" id="composeAnimals"></p>
+            <form id="postForm">
+                <label>
+                    Caption
+                    <textarea name="description" maxlength="500" placeholder="Say something cute…" required></textarea>
+                </label>
+                <label>
+                    Tags <small>(optional, comma separated)</small>
+                    <input type="text" id="input_tags" placeholder="weekend, friends">
+                </label>
+                <label class="switch">
+                    <!-- No name attribute: read by its id, not saved into the record's data. -->
+                    <input type="checkbox" id="input_private">
+                    <span class="switch-ui" aria-hidden="true"></span>
+                    <span><strong>Private</strong> <small>only you can see it</small></span>
+                </label>
+                <button type="submit" class="btn primary wide" id="postButton">Share</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- ===================================================== activity -->
+    <section class="panel" id="activityPanel" hidden aria-label="Activity">
+        <div class="panel-card">
+            <header class="sheet-head">
+                <h2>Activity</h2>
+                <span class="spacer"></span>
+                <button type="button" class="icon-btn" data-close-panel aria-label="Close"><svg><use href="#i-close"/></svg></button>
+            </header>
+            <div class="push-box" id="pushBox">
+                <p id="pushStatus">Get a notification on this device when someone likes, comments or follows you, and when people you follow post.</p>
+                <button type="button" class="btn primary" id="pushButton">Turn on notifications</button>
+            </div>
+            <ul class="activity-list" id="activityList"></ul>
+            <p class="empty" id="activityEmpty">No activity yet. Likes, comments and new followers show up here.</p>
+        </div>
+    </section>
+
+    <!-- ===================================================== profile -->
+    <section class="panel" id="profilePanel" hidden aria-label="Your profile">
+        <div class="panel-card">
+            <header class="sheet-head">
+                <h2>You</h2>
+                <span class="spacer"></span>
+                <button type="button" class="icon-btn" data-close-panel aria-label="Close"><svg><use href="#i-close"/></svg></button>
+            </header>
+            <div class="profile-top">
+                <img class="avatar xl" alt="" data-me-avatar>
+                <div>
+                    <p class="profile-name" id="profileName"></p>
+                    <p class="profile-stats"><span><strong id="statFollowers">–</strong> followers</span> <span><strong id="statFollowing">–</strong> following</span></p>
+                    <p class="profile-links"><a href="#myposts" data-close-panel>My posts</a> · <a href="#myprivate" data-close-panel>Private</a> · <a href="#feed" data-close-panel>Following</a></p>
+                </div>
+            </div>
+            <p class="guest-note" id="guestNote" hidden>You are a guest: this account and its posts are deleted 30 minutes after you leave. <a href="signup.html">Sign up</a> to keep them.</p>
+
+            <h3>Your spirit animal</h3>
+            <p class="hint">The face closest to the camera becomes your spirit animal. Everyone else gets a random one.</p>
+            <div class="spirit-grid" id="spiritGrid" role="radiogroup" aria-label="Your spirit animal"></div>
+
+            <h3>Your own 3D models</h3>
+            <p class="hint">
+                Upload a <strong>.glb</strong>, <strong>.gltf</strong> (with embedded data) or <strong>.vrm</strong> head, up to 25 MB.
+                It follows your head; morph targets named like ARKit blendshapes
+                (<code>eyeBlinkLeft</code>, <code>jawOpen</code>, <code>mouthSmileLeft</code>…) follow your face.
+                Only you can see your models.
+            </p>
+            <label class="btn ghost upload-btn">
+                <input type="file" id="modelInput" accept=".glb,.gltf,.vrm,model/gltf-binary,model/gltf+json" hidden>
+                <svg><use href="#i-cube"/></svg> Upload a 3D model
+            </label>
+            <p class="hint" id="modelStatus" role="status"></p>
+
+            <div class="profile-foot">
+                <button type="button" class="btn ghost" id="logoutButton">Log out</button>
+            </div>
+        </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+
+</html>

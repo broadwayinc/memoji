@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Log in · memoji</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="app.css">
+    <script src="https://cdn.jsdelivr.net/npm/skapi-js@2.4.2/dist/skapi.js"></script>
+    <script src="service.js"></script>
+</head>
+
+<body class="auth-body">
+    <main class="auth">
+        <div class="auth-card">
+            <a class="logo" href="index.html"><span class="logo-paw" aria-hidden="true">🐾</span>memoji</a>
+            <div class="auth-hero" aria-hidden="true">🐰🐻🐹🦫🦁🐯🐢🦈🦍👽👻</div>
+            <h1>Welcome back</h1>
+            <p>Snap a photo and every face turns into a cute 3D animal.</p>
+
+            <!-- skapi.login() signs the user in. The form's action is the page Skapi opens after a successful login. -->
+            <form id="loginForm" action="index.html" onsubmit="login(event)">
+                <label>
+                    Email address
+                    <input type="email" name="email" placeholder="your@email.com" autocomplete="email" required>
+                </label>
+                <label>
+                    Password
+                    <input type="password" name="password" minlength="6" placeholder="At least 6 characters" autocomplete="current-password" required>
+                </label>
+                <button type="submit" class="btn primary wide">Log in</button>
+            </form>
+
+            <p class="or">or</p>
+            <!--
+                skapi.anonymousLogin() signs the visitor in with a temporary account (no email, no password),
+                deleted 30 minutes after the visitor leaves, or at once on logout.
+            -->
+            <button type="button" class="btn ghost wide" id="guestLoginButton" onclick="guestLogin()">Try it as a guest</button>
+
+            <p class="auth-links">
+                <a href="signup.html">Create an account</a> · <a href="forgot-password.html">Forgot password?</a>
+            </p>
+        </div>
+    </main>
+
+    <script>
+        /*
+            Where to go after the login: a page that needs a logged in user sends the visitor here with its name
+            in ?to=, so the visitor is taken back there. Only names of pages in this app are accepted.
+        */
+        let destination = new URLSearchParams(location.search).get("to");
+        if (!/^[a-z-]+\.html(#.*)?$/.test(destination || "")) {
+            destination = "index.html";
+        }
+        document.getElementById("loginForm").action = pageUrl(destination);
+
+        // A user who is already logged in goes on right away. A guest stays, to log in with a real account.
+        userReady.then((user) => {
+            if (user && !user.anonymous) {
+                location.replace(pageUrl(destination));
+            }
+        });
+
+        async function login(event) {
+            event.preventDefault();
+            try {
+                // On success Skapi redirects to the form's action.
+                await skapi.login(event);
+            } catch (err) {
+                if (err.code === "USER_IS_DISABLED") {
+                    // The account was removed: skapi.recoverAccount() emails a link that enables it again.
+                    if (confirm("This account has been removed. Send a recovery email?")) {
+                        try {
+                            await skapi.recoverAccount(pageUrl("login.html"));
+                            alert("A recovery email has been sent. Click the link in it, then log in.");
+                        } catch (recoverErr) {
+                            alert(recoverErr.message);
+                        }
+                    }
+                    return;
+                }
+                if (err.code === "SIGNUP_CONFIRMATION_NEEDED") {
+                    if (confirm("Confirm your email address first, with the link in the signup email. Send the email again?")) {
+                        try {
+                            await skapi.resendSignupConfirmation();
+                            alert("The confirmation email has been sent again.");
+                        } catch (resendErr) {
+                            alert(resendErr.message);
+                        }
+                    }
+                    return;
+                }
+                alert(err.message);
+            }
+        }
+
+        async function guestLogin() {
+            let button = document.getElementById("guestLoginButton");
+            button.disabled = true;
+            try {
+                await skapi.anonymousLogin();
+                location.replace(pageUrl(destination));
+            } catch (err) {
+                // For example "Anonymous login is not enabled for this project." or "User limit exceeded."
+                alert(err.message);
+                button.disabled = false;
+            }
+        }
+    </script>
+</body>
+
+</html>

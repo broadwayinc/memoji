@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Sign up · memoji</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="app.css">
+    <script src="https://cdn.jsdelivr.net/npm/skapi-js@2.4.2/dist/skapi.js"></script>
+    <script src="service.js"></script>
+</head>
+
+<body class="auth-body">
+    <main class="auth">
+        <div class="auth-card">
+            <a class="logo" href="index.html"><span class="logo-paw" aria-hidden="true">🐾</span>memoji</a>
+            <h1>Create your account</h1>
+            <p>Pick a spirit animal, take photos, follow your friends.</p>
+            <!--
+                skapi.signup() creates the account. With signup_confirmation Skapi emails a confirmation link
+                that brings the user to the login page.
+            -->
+            <form action="signup-success.html" onsubmit="signup(event)">
+                <label>
+                    Name
+                    <input type="text" name="name" placeholder="What should we call you?" autocomplete="nickname" maxlength="40" required>
+                </label>
+                <label>
+                    Email address
+                    <input type="email" name="email" placeholder="your@email.com" autocomplete="email" required>
+                </label>
+                <label>
+                    Password
+                    <input type="password" name="password" minlength="6" placeholder="At least 6 characters" autocomplete="new-password" required>
+                </label>
+                <button type="submit" class="btn primary wide">Sign up</button>
+            </form>
+            <p class="auth-links"><a href="login.html">I already have an account</a></p>
+        </div>
+    </main>
+
+    <script>
+        // A user who is already logged in does not need to sign up. A guest can: signup() logs the guest out first.
+        userReady.then((user) => {
+            if (user && !user.anonymous) {
+                location.replace(pageUrl("index.html"));
+            }
+        });
+
+        async function signup(event) {
+            event.preventDefault();
+            try {
+                // On success Skapi redirects to the form's action (signup-success.html).
+                await skapi.signup(event, { signup_confirmation: pageUrl("login.html") });
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+    </script>
+</body>
+
+</html>
