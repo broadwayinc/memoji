@@ -247,8 +247,8 @@ function makeEye({ r = 0.09, style = "bead", lidColor = "#ffffff", liner = "#3b2
         // Gaze: the bead slides inside its socket.
         ballGroup.position.set(clamp(lookX, -1, 1) * r * 0.32, clamp(lookY, -1, 1) * r * 0.26, 0);
         const size = 1 + wide * 0.15;
-        // A big smile closes the eye into an arc.
-        const h = clamp(happy * (1 - blink), 0, 1);
+        // A big smile closes the eye into an arc, also when the eyes are shut while smiling (a beaming face).
+        const h = clamp(happy, 0, 1);
         parts.bead.scale.set(size, size * Math.max(0.05, 1 - h), size);
         for (const g of parts.glints) g.visible = h < 0.5;
         parts.arc.visible = h > 0.5;
@@ -256,8 +256,8 @@ function makeEye({ r = 0.09, style = "bead", lidColor = "#ffffff", liner = "#3b2
         parts.arc.rotation.z = tiltZ * 0.5;
         // Lids: hidden (rolled back) when relaxed; angry, sad, squint and blink bring them down.
         parts.lidPivot.rotation.z = tiltZ;
-        const down = clamp(angry * 0.85 + sad * 0.55 + squint * 0.4, 0, 1);
-        const b = clamp(blink, 0, 1);
+        const down = clamp(angry * 0.85 + sad * 0.55 + squint * 0.4, 0, 1) * (1 - h);
+        const b = clamp(blink, 0, 1) * (1 - h);
         parts.upper.rotation.x = lerp(lerp(-1.55, -0.35, down), 0.26, b);
         parts.lower.rotation.x = lerp(1.55 - squint * 0.5, 0.05, b * 0.85);
         parts.upper.visible = parts.upper.rotation.x > -1.45;
@@ -285,7 +285,9 @@ export function readExpression(bs) {
     const angry = clamp(((browDownL + browDownR) / 2) * 2.4 + sneer * 0.6 * (1 - smile), 0, 1);
     const outerUp = (g("browOuterUpLeft") + g("browOuterUpRight")) / 2;
     const wide = (g("eyeWideLeft") + g("eyeWideRight")) / 2;
-    const surprise = clamp(outerUp * 1.8 + wide * 0.5 - angry * 0.6, 0, 1);
+    // Raised brows in a big, eyes-closed smile are joy, not surprise.
+    const shut = (g("eyeBlinkLeft") + g("eyeBlinkRight")) / 2;
+    const surprise = clamp((outerUp * 1.8 + wide * 0.5 - angry * 0.6 - smile * 0.4) * (1 - 0.8 * smooth(0.3, 0.7, shut)), 0, 1);
     const sad = clamp((g("browInnerUp") - outerUp * 0.7) * 2.4 + frown * 0.5 - smile * 0.5, 0, 1);
     const blink = (s) => clamp(Math.max(smooth(0.35, 0.7, g("eyeBlink" + s)), g("_blink" + s)), 0, 1);
     const look = (s, side) => {
@@ -495,8 +497,17 @@ function makeMouth({ w = 0.12, style = "smile", line = "#3a1d1a", teeth = null, 
         for (const p of teethParts) {
             const m = p.mesh;
             if (p.kind === "buck") {
-                m.position.set(p.x, t0 - p.h * 0.45 - lineR * 0.4, zc(p.x) + w * 0.03);
-                m.visible = true;
+                /*
+                    Buck teeth sit behind the lips: hidden while the mouth is closed, they show inside the
+                    opening as it opens, hanging from just behind the upper lip line (which stays in front),
+                    and never longer than the opening.
+                */
+                const show = smooth(0.05, 0.3, open);
+                const h = Math.min(p.h, Math.max(0.0001, depthH * 0.62));
+                const y = t0 - lineR * 0.5 - h / 2;
+                m.visible = show > 0.02;
+                m.scale.set(show, h / p.h, 1);
+                m.position.set(p.x * (0.85 + 0.15 * show), y, zc(p.x, y) - w * 0.06);
             } else if (p.kind === "fang") {
                 const x = Wo * p.u;
                 m.visible = open > 0.08;
@@ -724,12 +735,12 @@ function buildStandard(id) {
             });
         }
         // Brows grow in with the expression and move with it.
-        const show = clamp((e.angry + e.sad + e.surprise) * 2, 0, 1);
+        const show = smooth(0.08, 0.4, e.angry + e.sad + e.surprise);
         for (const b of brows) {
             const L = b.side > 0;
             const up = e.surprise * 0.9 + e.sad * 0.25 + (L ? e.browUpL : e.browUpR) * 0.3 - e.angry * 0.45;
             b.holder.position.copy(b.base).add(v3(0, clamp(up, -0.6, 1) * 0.08, 0));
-            b.brow.visible = show > 0.02;
+            b.brow.visible = show > 0.05;
             b.brow.scale.set(show, show, 0.5 * show);
             b.brow.rotation.set(0, 0, Math.PI / 2 + b.side * (e.angry * 0.55 - e.sad * 0.5));
         }
