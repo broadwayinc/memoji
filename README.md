@@ -6,6 +6,8 @@ It is plain HTML and JavaScript with no build step and no server of its own. Fac
 
 It grew out of the photo gallery page of the Skapi HTML template (`templates-skapi/database.html`), so it is also a full example of building a social app on Skapi.
 
+**Source code:** [github.com/broadwayinc/memoji](https://github.com/broadwayinc/memoji) (`git clone https://github.com/broadwayinc/memoji.git`)
+
 ---
 
 ## What it does

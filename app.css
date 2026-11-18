@@ -758,6 +758,10 @@ textarea:focus, input:focus { border-color: var(--accent); }
 
 .upload-btn { cursor: pointer; }
 .profile-foot { margin-top: 1.6rem; display: flex; justify-content: center; }
+.source-link { margin: 1rem 0 0; text-align: center; font-size: .85rem; font-weight: 700; }
+.source-link a { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); }
+.source-link a:hover { color: var(--ink); }
+.source-link svg { width: 18px; height: 18px; }
 
 /* ---------------------------------------------------------- install / notifications banner */
 
