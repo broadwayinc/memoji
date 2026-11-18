@@ -1,153 +1,297 @@
 # memoji
 
-An Instagram-like photo app where every face turns into a cute 3D animal. Take a photo (or pick one from your gallery), and the face closest to the camera becomes your **spirit animal** while everyone else in the picture gets a random one. Post it, like, comment, follow people and get notified.
+**memoji** is an Instagram-like photo app where every face turns into a cute 3D animal. Point the camera at yourself and your friends. The face closest to the camera becomes your **spirit animal** and everyone else gets a random one, live, following each head, blink and smile. Take the photo and share it; people can like it, comment on it, follow you and get notified.
 
-It is the photo gallery of the Skapi HTML template (`templates-skapi/database.html`) with a memoji camera in front of it: plain HTML and JavaScript, no build step, and all backend features on [Skapi](https://www.skapi.com) (project `5g3TffXBwAE3eFEcbG-7Zd6TgdLUaFxseKMT1qveY`).
+It is plain HTML and JavaScript with no build step and no server of its own. Face tracking runs in the browser (WebAssembly + WebGL), and every backend feature runs on [Skapi](https://www.skapi.com): accounts, the database, file storage, followers, realtime messages and push notifications. It installs like a native app (PWA).
 
-## Spirit animals
+It grew out of the photo gallery page of the Skapi HTML template (`templates-skapi/database.html`), so it is also a full example of building a social app on Skapi.
 
-Bunny, bear, hamster, beaver, lion, tiger, koala, monkey, gorilla, alien and a little white sheet ghost. You can also upload your own 3D model (see below).
+---
 
-The heads are made procedurally, with nothing downloaded, in the style of soft vinyl / clay toy icons: simple pastel colour blocks and detail that comes from the sculpted shape, not from textures or polygon count.
+## What it does
 
-- **Sculpted like clay** (`js/heads-sdf.js`): each head is a few soft shapes blended together: a wide bean-shaped head with full cheeks, plus whichever of these the animal has:
-  - a muzzle that bulges out;
-  - cheek pouches or cheek tufts;
-  - a scalloped mane;
-  - a brow ridge and crest;
-  - a monkey's raised heart-shaped face mask and hair tuft;
-  - cupped ears with their inside modelled, and the koala's big fluffy ears with a scalloped rim.
+**The memoji camera**
+- Live 3D animal heads on up to 6 faces at once: bunny, bear, hamster, beaver, lion, tiger, koala, monkey, gorilla, alien and a little sheet ghost.
+- The closest face wears **your spirit animal**; everyone else gets a random one (🎲 to shuffle).
+- The animals copy you:
+  - their eyes **follow your gaze** and **blink** when you blink;
+  - they **smile** (happy ^ ^ eyes), **laugh**, look **sad**, **angry** or **surprised**;
+  - they wink, kiss and puff their cheeks;
+  - their ears wobble when you move.
+- The animal **replaces your whole head**, hair included, and its eyes sit right where yours are.
+- The memoji **match your lighting**: brightness, colour and which side the light comes from.
+- **Mirror** view for selfies (toggle), front/back camera, and photos from your gallery. Group photos work too, and small faces in the back are found.
+- **Your own 3D models**: upload a `.glb`, `.gltf` or `.vrm` (VRoid avatars included) and wear it instead.
 
-  The blend is meshed with surface nets into about 40k triangles, with perfectly smooth normals. It runs in a Web Worker (`js/heads-worker.js`), so the camera never stutters.
-- **Pastel colour blocks**: muzzle, inner ears, stripes, blush, face mask. They are vertex colours whose edges follow the sculpt.
-- **Glossy bead eyes** that slide to **follow your gaze** and **blink** with you. Gaze is read from where your iris sits between the eye corners; blinks from how open each eye is, against your own open eye.
-- **Expressions**: **smile** (the eyes close into happy ^ ^ arcs), **laugh**, **sad** (lids and brows tilt, mouth corners go down, ears droop), **angry** (lids and brows slant into a V), **surprised** (bigger eyes, brows up, round mouth), **kiss**, wink, cheek puff and nose scrunch. Brows only appear while you make an expression, so a relaxed face stays clean.
-- **Mouths** with tongues and teeth (buck teeth, fangs, rows of teeth), plus whiskers and nostrils.
-- **Springy parts**: ears and alien antennae wobble when you move.
+**The social app**
+- A feed of posts: **Recent**, **Most liked**, **Most commented**, **Following**, **My posts**, **Private**, and posts by tag or by person.
+- **Post** a photo with a caption and tags, publicly or **privately** (only you can see it).
+- **Like** (double-tap the photo), **comment**, **follow** people.
+- **Activity**: likes, comments and new followers arrive live while the app is open, and as **push notifications** when it isn't. You also get a push when someone you follow posts.
+- Accounts: sign up with email confirmation, log in, reset a forgotten password, recover a removed account, or just **try it as a guest**.
 
-MediaPipe's raw blendshapes are small and mixed: a big smile also lowers the brows, and `browInnerUp` rises both when sad and when surprised. `readExpression()` in `js/animals.js` turns them into clean expressions, and a slow per-person baseline makes a resting face read as neutral.
+**The app**
+- Installs on Android, iPhone/iPad (iOS 16.4+) and desktop.
+- Starts fast and opens offline.
+- Has home-screen shortcuts (*Take a memoji*, *Activity*, *Following*), and can receive photos **shared from other apps**.
+- Shows an unread badge on the app icon.
 
-## How it works
+---
 
-| Part | What it does |
-| --- | --- |
-| `js/memoji-engine.js` | Camera, face tracking and rendering. MediaPipe Face Landmarker (WebAssembly; GPU delegate over WebGL with a CPU fallback) finds up to 6 faces with landmarks, blendshapes and a 4×4 pose matrix. three.js renders a head under each pose with MediaPipe's own projection (vertical FOV 63°), so the head lands on the face. |
-| `js/heads-sdf.js` | The 11 sculpted heads (signed distance fields) and the mesher; pure math. |
-| `js/heads-worker.js` | Builds the head meshes in a Web Worker. |
-| `js/animals.js` | The rigs: eyes, brows, mouth, ears, expressions. |
-| `js/app.js` | The social app: feed, posting, likes, comments, follows, notifications, spirit picker, custom models. |
-| `index.html`, `app.css` | The app page and its design (light and dark). |
-| `login.html`, `signup.html`, `signup-success.html`, `forgot-password.html`, `reset-password.html` | Accounts, from the template, restyled. Guests can try it with **Try it as a guest**. |
-| `service.js` | Creates `skapi`, keeps the login gate (same as the template's). |
-| `sw.js` | Service worker: offline cache, updates, share target, push notifications. |
-| `manifest.webmanifest`, `icons/`, `offline.html` | The installable app: manifest, icons, offline page. |
+## Quick start
 
-Details worth knowing:
-
-- **Closest face.** The biggest face is the closest. It keeps the spirit animal until another face is clearly (30%) bigger, so it does not flicker between two people.
-- **Lighting.** With the sun button on, the memoji adapt to the camera. The frame's brightness and colour set the ambient light and exposure. The shading on the main face (left cheek against right, forehead against chin) sets the direction of the key light. A blurred copy of the frame is the environment map that the eyes and noses reflect. Turn it off for studio lighting.
-- **Group photos.** For a still photo, the picture is searched again in overlapping tiles, so small faces in the back are found too. A face found in a tile is projected back into the whole picture.
-- **Head placement.** The animal replaces the whole head, hair included. MediaPipe's canonical face has its eyes at y ≈ 2.7 cm, the chin at −9.4 and a width of ±7.7, and hair reaches about 13 to 15 cm above the eyes. The animal's eyes are at the middle of its head, and the head has a radius of about 15.6 cm (centred at eye height, 4 cm behind the face), so it reaches about 15 cm above and below your eyes. Then, every frame, the head slides along the camera ray until its eyes sit exactly in front of your irises. On test photos the head covers all 478 face landmarks and the hair, and its eye midpoint lands on the person's.
-- **Mirror.** The selfie camera shows the picture like a mirror, and the photo is saved the same way. The mirror button in the camera turns it off to see yourself as others do. The back camera is never mirrored.
-- **Smooth, not laggy.** Head tracking uses adaptive smoothing: steady when you hold still, quick when you move.
-- **What you see is what you post.** The camera shows a 4:5 crop, and the photo is that crop. Gallery photos keep their shape.
-
-## An installable app (PWA)
-
-memoji installs like a native app (Android, desktop Chrome / Edge, iPhone and iPad from iOS 16.4) and keeps working offline as far as it can.
-
-- **Manifest** (`manifest.webmanifest`): name, icons (the 3D bunny, also as maskable and Apple touch icons in `icons/`), full-screen standalone display and theme colours. It also has:
-  - **app shortcuts**: long-press the icon for *Take a memoji*, *Activity* and *Following*;
-  - a **share target**: share a photo from the gallery or another app to memoji, and it opens in the memoji camera with its faces turned into animals.
-- **Service worker** (`sw.js`):
-  - **Caching:** the app shell (pages, styles, scripts, icons) is cached on install and loaded network-first, so online you always get the newest version and offline the cached one. The CDN libraries (three.js, MediaPipe and its face model, fonts) are cached on first use, so later starts are fast. Skapi's API is never cached. `offline.html` covers pages never opened before.
-  - **Updates:** a new version waits until you tap the *new version is ready* toast, so it never reloads in the middle of a photo.
-- **Install:** a banner above the feed offers to install the app (with the steps for iPhone, where Safari has no install prompt). Your profile has an *Install memoji* button too.
-- **Notifications:**
-  - The banner, then the **Activity** panel, turn on push notifications for the device: `vapidPublicKey()`, `pushManager.subscribe()`, `subscribeNotification()`.
-  - On every launch the device's subscription is sent to Skapi again for whoever is logged in. Logging out removes it, so a shared device never gets the previous account's notifications.
-  - Notifications show the app icon and a monochrome paw badge, and group by post. Tapping one focuses memoji (or opens it) at the post.
-  - The app icon shows the number of unread activity items (Badging API).
-  - On iPhone and iPad, web push only works in the installed app: add memoji to the Home Screen and open it from there.
-
-To change the app, bump `VERSION` in `sw.js` so every installed copy picks up the new files.
-
-## Data on Skapi
-
-| Table | Access group | What |
-| --- | --- | --- |
-| `posts` | `authorized`, or `private` for private posts | `data: { description, spirit, animals }`, file `pic` (JPEG), tags (yours plus the spirit animal). Posted with `upload_to_feed` and `notify_subscribers` (not private ones) and `prevent_multiple_referencing`. |
-| `likes` | `public` | A record that references the post. The post's reference count is its number of likes. |
-| `comments` | `authorized` | `data: { comment, spirit }`, index `comment.<post record_id>`. "Most commented" orders those index names by total. |
-| `spirit_models` | `private` | Your uploaded 3D models: `data: { name, fit }`, file `model`. Only you can read them. |
-
-The views follow the URL hash, as in the template: `#` (recent), `#mostliked`, `#mostcomment`, `#feed` (people you follow), `#myposts`, `#myprivate`, `#tag=<tag>`, plus `#user=<user_id>` and `#post=<record_id>` (used by notifications).
-
-**Your spirit animal** is kept in your profile's `misc` field (only you can read it), so it follows you to other devices. A guest cannot edit a profile, so a guest's choice stays in the browser.
-
-## Following and notifications
-
-- **Follow** is `skapi.subscribe({ user_id, get_feed: true, get_notified: true })`. Their new posts show up under **Following**, and with notifications on, each new post sends you a push.
-- **Likes, comments and follows** reach the other user at once with `skapi.postRealtime()` while they have memoji open (a toast, plus the Activity list and badge). When they are not connected, the same call sends them a push notification instead.
-- **Push notifications** are turned on per device in **Activity**: `vapidPublicKey()`, the browser's push subscription with `sw.js`, then `subscribeNotification()`.
-- The Activity list is kept in the browser (localStorage), per account.
-
-## Your own 3D models
-
-In your profile (or the **+** at the end of the animal strip in the camera), upload a **.glb**, a **.gltf** with embedded data, or a **.vrm**, up to 40 MB. Draco- and Meshopt-compressed meshes and KTX2 textures are supported.
-
-- **A head model** is centred and scaled to the size of a head.
-- **A full avatar** has neck and head bones: every VRM / VRoid model, Mixamo-style rigs, and so on. It is cut at the neck, so only its head and hair replace yours. Its size comes from the vertices that move with the head bone, so arms in a T-pose don't count.
-- **Expressions** come from any of these:
-  - the VRM's own expression presets (happy, angry, sad, surprised, blink, blinkLeft/Right, aa, ih, ou, oh), VRM 1.0 and 0.x;
-  - morph targets named like **ARKit blendshapes** (`eyeBlinkLeft`, `jawOpen`, `mouthSmileLeft`, `browInnerUp`… all 52);
-  - VRoid names (`Fcl_EYE_Close_L`, `Fcl_MTH_A`, `Fcl_BRW_Angry`…);
-  - VRChat visemes (`vrc.v_aa`, `vrc.blink_left`).
-
-  Names are matched loosely: prefixes before a dot, case, `_` and spaces don't matter, and `Left`/`_L` are the same.
-- **Eye bones** (VRM `leftEye` / `rightEye`, VRoid `J_Adj_L_FaceEye`) follow your gaze.
-- **Fit sliders** in the camera (size, up/down, forward/back, turn) fine-tune the fit, and it is saved with the model.
-- Models are private records: other people see your posts, never your model files.
-
-Tested with three.js's `facecap.glb` (52 ARKit shapes) and pixiv's `VRM1_Constraint_Twist_Sample.vrm`: cut at the neck, with smile, blink, mouth, angry, sad and gaze all working.
-
-### Where to get free models
-
-| Where | What | Notes |
-| --- | --- | --- |
-| [VRoid Hub](https://hub.vroid.com/en/models) | Thousands of anime avatars as `.vrm`, full expressions | Free account; download only models whose author allows it (shown on each model page). |
-| [VRoid Studio](https://vroid.com/en/studio) | Free app to make your own avatar | Export as VRM; it comes with blink, mouth and emotion expressions. |
-| [Sketchfab: ARKit faces](https://sketchfab.com/search?features=downloadable&q=arkit+blendshapes&type=models) | Heads with the 52 ARKit blendshapes | Free account; choose a free/CC model and download **glTF** or **GLB**. |
-| [Sketchfab: animal heads](https://sketchfab.com/search?features=downloadable&q=animal+head&type=models) | Static animal heads | They follow your head; no expressions unless they have morph targets. |
-| [Quaternius](https://quaternius.com) | CC0 (public domain) low-poly packs, glTF | Characters and animals; full bodies are cut at the neck when they have neck/head bones. |
-| [facecap.glb](https://github.com/mrdoob/three.js/raw/r170/examples/models/gltf/facecap.glb) | three.js example face with all 52 ARKit shapes | Good for a first test. |
-| [VRM sample avatar](https://github.com/pixiv/three-vrm/raw/dev/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm) | pixiv's VRM 1.0 sample | Good for a first test of a full avatar. |
-
-Always check each model's license before posting with it.
-
-## Running it
-
-Camera access and push notifications need **HTTPS** (or `localhost`).
+You need a static web server. The camera and push notifications need **HTTPS**, or `localhost`.
 
 ```sh
 npm install
-npm run dev
+npm run dev          # serves the folder on http://localhost:4000
 ```
 
-Then open `http://localhost:4000/index.html`. Any static server works. To try it on a phone, host it on HTTPS, for example with Skapi's website hosting.
+Open `http://localhost:4000/index.html`, tap **Try it as a guest**, then the camera button.
 
-To run it against another Skapi project, open any page with `?pid=<Project ID>`, or change `DEFAULT_PROJECT_ID` in `service.js`.
+The app runs on the Skapi project set in `service.js` (`DEFAULT_PROJECT_ID`). To use your own project, create one at [skapi.com](https://www.skapi.com), then either change `DEFAULT_PROJECT_ID` or open any page with `?pid=<your project id>`. Nothing has to be set up in the project first: tables, indexes and tags are created by the first records.
+
+To use it on a phone, host the folder on HTTPS, for example with Skapi's website hosting. To receive push notifications on iPhone, add memoji to the Home Screen and open it from there.
+
+---
+
+## How it works
+
+```
+ camera / photo ──► MediaPipe Face Landmarker ──► faces: 478 landmarks, 52 blendshapes, 4×4 head pose
+                         (WebAssembly + WebGL)                │
+                                                              ▼
+                     heads-sdf.js ─► heads-worker.js ──► animals.js rigs ──► three.js (WebGL) render
+                    (sculpted heads)   (meshing)       (eyes, brows, mouth,     │
+                                                        ears, expressions)      ▼
+                                                                    composite photo (JPEG)
+                                                                                │
+                                                                                ▼
+ app.js ──────────────── Skapi: accounts · database + files · followers · realtime · push
+ sw.js  ──────────────── installable app: offline cache · share target · push notifications
+```
+
+### Face tracking
+
+`js/memoji-engine.js` runs [MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/web_js) in the browser. It uses the GPU delegate over WebGL, and falls back to WebAssembly on the CPU. For every face it gets landmarks, blendshapes (`eyeBlinkLeft`, `jawOpen`, `mouthSmileLeft`…) and a head pose matrix.
+
+three.js renders an animal under each pose with MediaPipe's own camera projection (vertical field of view 63°), so the head lands exactly on the face. On top of that:
+
+- **Eyes on eyes.** The animal's eyes sit in front of yours, a few centimetres closer to the camera. Each frame the head slides along the camera ray until its eyes line up with your irises.
+- **Gaze and blinks.** Gaze is read from where each iris sits between the eye corners. Blinks are read from how open each eye is, against your own open eye. Both are more reliable than the raw blendshapes.
+- **Expressions.** `readExpression()` (`js/animals.js`) turns the raw blendshapes into clean smile, sad, angry, surprised and pucker signals. A big smile also lowers the brows, and that is not anger. A slow per-person baseline makes a resting face read as neutral.
+- **Closest face.** The biggest face gets the spirit animal. It keeps it until another face is clearly bigger, so it doesn't flicker between two people.
+- **Lighting.** The frame's brightness and colour set the ambient light and exposure. The shading on your face (left against right cheek, forehead against chin) sets the direction of the key light. A blurred copy of the frame is what the glossy eyes reflect.
+- **Smoothing.** Adaptive smoothing keeps the head steady when still and quick when moving. For still photos, the picture is also searched in tiles so small faces are found.
+- **Capture.** The photo is exactly what the viewfinder shows (mirrored for selfies), with the 3D heads drawn over it.
+
+### The animals
+
+The heads are sculpted procedurally in the style of soft vinyl / clay toy icons, with simple pastel colour blocks. The detail comes from the shape, not from textures or millions of polygons.
+
+- `js/heads-sdf.js` describes each head as a few soft shapes blended together like clay (signed distance fields):
+  - a bean-shaped head with full cheeks;
+  - a muzzle that bulges out;
+  - cheek pouches or tufts;
+  - a scalloped mane;
+  - a brow ridge and crest;
+  - the monkey's heart-shaped face mask;
+  - cupped ears with their insides modelled.
+
+  The colours (muzzle, inner ears, stripes, blush) follow the sculpt.
+- `js/heads-worker.js` turns each head into a smooth mesh (surface nets, about 40k triangles) in a Web Worker, so the camera never stutters.
+- `js/animals.js` adds the moving parts:
+  - glossy bead eyes with lids, which blink, slant and close into happy arcs;
+  - brows that appear only with an expression;
+  - a mouth that smiles, frowns and opens, with a tongue and teeth;
+  - springy ears.
+
+### Your own 3D models
+
+Upload a `.glb`, `.gltf` (embedded) or `.vrm`, up to 40 MB; Draco, Meshopt and KTX2 compression are supported.
+
+- A **head** model is centred and sized to your head.
+- A **full avatar** (anything with neck and head bones, like every VRM / VRoid model) is cut at the neck, so only its head and hair show.
+- Faces follow you through any of these:
+  - VRM expression presets (happy, angry, sad, surprised, blink, aa…);
+  - ARKit-named morph targets (all 52);
+  - VRoid names (`Fcl_EYE_Close_L`…);
+  - VRChat visemes.
+- Eye bones follow your gaze.
+- Fit sliders in the camera fine-tune the fit, and it's saved with the model.
+
+Free models to try:
+
+| Where | What |
+| --- | --- |
+| [VRoid Hub](https://hub.vroid.com/en/models) | Anime avatars as `.vrm` with full expressions. Download only models whose author allows it. |
+| [VRoid Studio](https://vroid.com/en/studio) | Free app to make your own VRM avatar. |
+| [Sketchfab: ARKit faces](https://sketchfab.com/search?features=downloadable&q=arkit+blendshapes&type=models) | Heads with the 52 ARKit blendshapes (download as glTF / GLB). |
+| [Sketchfab: animal heads](https://sketchfab.com/search?features=downloadable&q=animal+head&type=models) | Static heads; they follow your head. |
+| [Quaternius](https://quaternius.com) | CC0 low-poly characters and animals (glTF). |
+| [facecap.glb](https://github.com/mrdoob/three.js/raw/r170/examples/models/gltf/facecap.glb) · [VRM sample](https://github.com/pixiv/three-vrm/raw/dev/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm) | Quick test files (both tested with memoji). |
+
+Check each model's license before posting with it.
+
+### The installable app (PWA)
+
+- `manifest.webmanifest`: icons (the 3D bunny), standalone display, theme colours, shortcuts, and a **share target** that opens shared photos in the memoji camera.
+- `sw.js`, the service worker:
+  - caches the app shell, network-first, so online is always the newest version and offline still opens;
+  - caches the versioned CDN libraries and the face model on first use, for fast starts;
+  - never caches Skapi;
+  - holds new versions until you tap *Update*, so the app never reloads mid-photo;
+  - shows push notifications that open the right post, and sets the app icon badge.
+- `offline.html` covers pages that were never opened before. The app offers to install itself (with the steps for iPhone, where Safari has no install prompt) and asks once for notification permission.
+
+---
+
+## Skapi features it demonstrates
+
+Every backend feature is a Skapi call from the browser. Here is what memoji uses, how, and where to find it.
+
+### Connection and the login gate: `service.js`
+
+| Skapi | How memoji uses it |
+| --- | --- |
+| `new Skapi(projectId, { autoLogin: true, eventListener: { onLogin } })` | One `skapi` object for every page. `autoLogin` restores the session; `onLogin` sends a logged-out visitor on a protected page to the login page. |
+| `skapi.getProfile()` | `userReady` resolves to the logged-in user (or `null`) before a page uses the user. |
+
+### Accounts: `login.html`, `signup.html`, `forgot-password.html`, `reset-password.html`
+
+| Skapi | How memoji uses it |
+| --- | --- |
+| `skapi.signup(event, { signup_confirmation })` | Sign up from an HTML form. A confirmation email links back to the login page. |
+| `skapi.login(event)` | Log in from a form. Skapi redirects to the form's `action`, the page the user came from. |
+| `skapi.anonymousLogin()` | **Try it as a guest**: a temporary account, deleted 30 minutes after the visitor leaves. |
+| `skapi.resendSignupConfirmation()` | Offered when a login fails with `SIGNUP_CONFIRMATION_NEEDED`. |
+| `skapi.recoverAccount(url)` | Offered when a login fails with `USER_IS_DISABLED`. |
+| `skapi.forgotPassword()` / `skapi.resetPassword(event)` | A 6-digit code by email, then a new password. |
+| `skapi.logout()` | Log out. Before it, the device's push subscription is removed from the account. |
+
+### Profiles and users: `js/app.js`
+
+| Skapi | How memoji uses it |
+| --- | --- |
+| `skapi.updateProfile({ misc })` | Stores your spirit animal in the profile's private `misc` field, so it follows you to other devices. A guest can't edit a profile, so a guest's choice stays in the browser. |
+| `skapi.getUsers({ searchFor: "user_id", value })` | Names of post authors and commenters (cached), and your follower and following counts (`subscribers`, `subscribed`). |
+
+### Database and files: `js/app.js`
+
+memoji keeps everything in four tables:
+
+| Table | Access group | Holds |
+| --- | --- | --- |
+| `posts` | `authorized` (any logged-in user), or `private` | `data: { description, spirit, animals }`, the photo as file `pic`, tags (yours plus the spirit animal). |
+| `likes` | `public` | Empty records that **reference** a post. |
+| `comments` | `authorized` | `data: { comment, spirit }` with the index `comment.<post id>`. |
+| `spirit_models` | `private` | Your uploaded 3D models: file `model`, `data: { name, fit }`. |
+
+It demonstrates these features:
+
+- **Records with files and an upload progress bar.** The JPEG from the camera is attached as the third argument of `postRecord()`:
+
+  ```js
+  await skapi.postRecord(
+      { description, spirit, animals },
+      {
+          table: {
+              name: "posts",
+              access_group: isPrivate ? "private" : "authorized",
+              subscription: { is_subscription_record: false, upload_to_feed: !isPrivate, notify_subscribers: !isPrivate },
+          },
+          source: { prevent_multiple_referencing: true }, // one like per user
+          notification: { title: "Ann posted a new memoji 🐰", body: description },
+          tags,
+          progress: (p) => { /* p.progress % on the Share button */ },
+      },
+      [{ name: "pic", file }]
+  );
+  ```
+
+- **Access groups.**
+  - `public` for likes, so their counts are open.
+  - `authorized` for posts and comments, so only logged-in users read them.
+  - `private` for private posts and custom models: only their owner can read them, and their files come through a signed URL from `file.getFile("endpoint")`. A custom model's bytes are read with `getFile("blob")`.
+- **References.** A like is `postRecord(null, { table: { name: "likes", access_group: "public" }, reference: postId })`. Because the post has `prevent_multiple_referencing`, each user can like it once. The post's `referenced_count` is its number of likes.
+- **Reserved indexes.**
+  - `$user_id` gives *My posts*, *Private*, a person's posts, and "did I like this?" (likes by me referencing a post).
+  - `$referenced_count > 0` gives *Most liked*.
+- **Custom indexes and `getIndexes()`.** Comments are indexed `comment.<post id>`:
+  - `getIndexes({ table: "comments", index: "comment." + id })` gives the comment count;
+  - `getIndexes({ table: "comments", index: "comment.", order: { by: "total_bool" } })` lists posts by number of comments, which is *Most commented*.
+- **Tags.** Posts get your tags plus the spirit animal, and `getRecords({ table, tag })` gives the `#tag` views.
+- **Paging.** `getRecords(query, { ascending: false, limit: 6, fetchMore })` with `endOfList` drives infinite scroll, and the comments' *Show more* button.
+- **Updating and deleting.** `postRecord(data, { record_id })` saves a custom model's fit; `deleteRecords({ record_id })` deletes posts, likes (unlike) and models.
+
+### Followers and the feed: `js/app.js`
+
+| Skapi | How memoji uses it |
+| --- | --- |
+| `skapi.subscribe({ user_id, get_feed: true, get_notified: true })` | **Follow**: their posts appear in *Following*, and each new post sends you a push. |
+| `skapi.unsubscribe({ user_id })` | **Unfollow**. |
+| `skapi.getSubscriptions({ subscriber, subscription })` | Is this user followed already (the *Follow* / *Following* button)? |
+| `skapi.getFeed({ access_group: "authorized" }, …)` | The *Following* view: posts uploaded with `upload_to_feed`. |
+| `postRecord(…, { table: { subscription: { notify_subscribers: true } }, notification })` | Followers who turned notifications on get a push with your own title and text when you post. |
+
+### Realtime: `js/app.js`
+
+| Skapi | How memoji uses it |
+| --- | --- |
+| `skapi.connectRealtime(callback)` | Opens the WebSocket when the app starts. Incoming `private` messages become toasts, the Activity list and the unread badge. |
+| `skapi.postRealtime(message, userId, { title, body })` | Likes, comments and follows are sent to the other user at once. If they are not connected, the third argument makes Skapi send it as a **push notification** instead. |
+
+```js
+await skapi.postRealtime(
+    { app: "memoji", kind: "like", post: postId, from_name, from_spirit },
+    ownerUserId,
+    { title: "memoji", body: "❤️ Ann liked your memoji" }
+);
+```
+
+### Push notifications: `js/app.js` and `sw.js`
+
+| Skapi | How memoji uses it |
+| --- | --- |
+| `skapi.vapidPublicKey()` | The key for `pushManager.subscribe()` in the service worker registration. |
+| `skapi.subscribeNotification(endpoint, keys)` | Registers the device for the logged-in user. It is called again on every launch, so a renewed subscription, or a different account on the same device, stays correct. |
+| `skapi.unsubscribeNotification(endpoint, keys)` | **Turn off** in Activity, and on logout. |
+
+The service worker shows both kinds of push. From `postRealtime()` it gets `{ title, body }`. From `notify_subscribers` it gets `{ title, body, type: "record", record_id, … }`, which it links to the post.
+
+### Hosting
+
+The app is static files, so it can be served by Skapi's website hosting (HTTPS, which the camera and push need) or any static host.
+
+---
+
+## Files
+
+| File | What it is |
+| --- | --- |
+| `index.html`, `app.css` | The app: feed, camera, compose, activity and profile (light and dark design). |
+| `js/app.js` | The social app on Skapi, the camera flow, custom models, notifications, install and update prompts. |
+| `js/memoji-engine.js` | Camera, MediaPipe face tracking, lighting, rendering, capture, custom models, thumbnails. |
+| `js/animals.js` | The animal rigs: eyes, brows, mouth, ears, expressions. |
+| `js/heads-sdf.js`, `js/heads-worker.js` | The sculpted heads (pure math) and the worker that meshes them. |
+| `service.js` | Creates `skapi` and the login gate; registers the service worker. |
+| `login.html`, `signup.html`, `signup-success.html`, `forgot-password.html`, `reset-password.html` | Account pages. |
+| `sw.js`, `manifest.webmanifest`, `icons/`, `offline.html` | The installable app. |
 
 ## Libraries
 
-All from a CDN, pinned to exact versions in `index.html`:
+Loaded from a CDN and pinned in `index.html`:
 
-- [three.js](https://threejs.org) 0.170.0 (WebGL rendering, glTF loading)
-- [MediaPipe Tasks Vision](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker/web_js) 0.10.21 with the `face_landmarker` model (WebAssembly)
 - [skapi-js](https://www.npmjs.com/package/skapi-js) 2.4.2
+- [three.js](https://threejs.org) 0.170.0
+- [MediaPipe Tasks Vision](https://www.npmjs.com/package/@mediapipe/tasks-vision) 0.10.21, with the `face_landmarker` model
+
+Google Fonts: Fredoka and Nunito.
 
 ## Limits
 
-- The live face detector is made for faces within about 2 m of the camera. Faces farther away are found in still photos (tiled search), but not always in the live view.
-- Sculpting a head takes a fraction of a second. It happens in a Web Worker, for every animal, as soon as the app or the camera opens.
-- Hands and hair in front of a face are not masked; the head is drawn over them.
+- The live face detector is made for faces within about 2 m of the camera. Farther faces are found in still photos, but not always live.
+- Hands or hair in front of a face aren't masked; the head is drawn over them.
+- Push notifications need HTTPS. On iPhone and iPad they need iOS 16.4+ and the app added to the Home Screen.
+- The Activity list is kept in the browser, per account.
+- When you change the app, bump `VERSION` in `sw.js` so installed copies pick up the new files.
