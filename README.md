@@ -8,13 +8,23 @@ It is the photo gallery of the Skapi HTML template (`templates-skapi/database.ht
 
 Bunny, bear, hamster, beaver, lion, tiger, turtle, shark, gorilla, alien and a little white sheet ghost. You can also upload your own 3D model (see below).
 
-The heads are made procedurally with three.js, with nothing downloaded. Each one is a deformed high-resolution sphere with a muzzle, cheeks and brow ridge, plus painted markings, stripes and blush. On top of that:
+The heads are made procedurally, with nothing downloaded, in the style of soft vinyl / clay toy icons: simple pastel colour blocks and detail that comes from the sculpted shape, not from textures or polygon count.
 
-- **Real fur:** shell texturing, 10 layers of strands with darker roots, shorter on the muzzle and none on the nose.
-- **Glossy eyes:** detailed irises, lid lines and lashes. The eyes **follow your gaze** (read from where your iris sits between the eye corners) and **blink** when you blink (read from how open each eye is, against your own open eye).
-- **Expressions:** brows, eyelids and a mouth that bends and opens. **Smile**, **laugh**, **sad** (inner brows up, droopy lids, corners down, ears droop), **angry** (brows in a V, lids slanted), **surprised** (brows up, wide eyes, round mouth), **kiss**, wink, cheek puff, nose scrunch.
-- **Mouths:** tongues and teeth (buck teeth, fangs, shark teeth), plus whiskers and nostrils.
-- **Motion:** ears, antennae, fins, manes and tufts sit on springs and wobble when you move.
+- **Sculpted like clay** (`js/heads-sdf.js`): each head is a few soft shapes blended together: a wide bean-shaped head with full cheeks, plus whichever of these the animal has:
+  - a muzzle that bulges out;
+  - cheek pouches or cheek tufts;
+  - a scalloped mane;
+  - a brow ridge and crest;
+  - a dorsal fin;
+  - gill grooves cut into the sides;
+  - cupped ears with their inside modelled.
+
+  The blend is meshed with surface nets into about 40k triangles, with perfectly smooth normals. It runs in a Web Worker (`js/heads-worker.js`), so the camera never stutters.
+- **Pastel colour blocks**: muzzle, inner ears, stripes, blush, belly. They are vertex colours whose edges follow the sculpt.
+- **Glossy bead eyes** that slide to **follow your gaze** and **blink** with you. Gaze is read from where your iris sits between the eye corners; blinks from how open each eye is, against your own open eye.
+- **Expressions**: **smile** (the eyes close into happy ^ ^ arcs), **laugh**, **sad** (lids and brows tilt, mouth corners go down, ears droop), **angry** (lids and brows slant into a V), **surprised** (bigger eyes, brows up, round mouth), **kiss**, wink, cheek puff and nose scrunch. Brows only appear while you make an expression, so a relaxed face stays clean.
+- **Mouths** with tongues and teeth (buck teeth, fangs, shark teeth), plus whiskers and nostrils.
+- **Springy parts**: ears and alien antennae wobble when you move.
 
 MediaPipe's raw blendshapes are small and mixed: a big smile also lowers the brows, and `browInnerUp` rises both when sad and when surprised. `readExpression()` in `js/animals.js` turns them into clean expressions, and a slow per-person baseline makes a resting face read as neutral.
 
@@ -23,7 +33,9 @@ MediaPipe's raw blendshapes are small and mixed: a big smile also lowers the bro
 | Part | What it does |
 | --- | --- |
 | `js/memoji-engine.js` | Camera, face tracking and rendering. MediaPipe Face Landmarker (WebAssembly; GPU delegate over WebGL with a CPU fallback) finds up to 6 faces with landmarks, blendshapes and a 4×4 pose matrix. three.js renders a head under each pose with MediaPipe's own projection (vertical FOV 63°), so the head lands on the face. |
-| `js/animals.js` | The 11 procedural animals and their rigs. |
+| `js/heads-sdf.js` | The 11 sculpted heads (signed distance fields) and the mesher; pure math. |
+| `js/heads-worker.js` | Builds the head meshes in a Web Worker. |
+| `js/animals.js` | The rigs: eyes, brows, mouth, ears, expressions. |
 | `js/app.js` | The social app: feed, posting, likes, comments, follows, notifications, spirit picker, custom models. |
 | `index.html`, `app.css` | The app page and its design (light and dark). |
 | `login.html`, `signup.html`, `signup-success.html`, `forgot-password.html`, `reset-password.html` | Accounts, from the template, restyled. Guests can try it with **Try it as a guest**. |
@@ -35,7 +47,7 @@ Details worth knowing:
 - **Closest face.** The biggest face is the closest. It keeps the spirit animal until another face is clearly (30%) bigger, so it does not flicker between two people.
 - **Lighting.** With the sun button on, the memoji adapt to the camera. The frame's brightness and colour set the ambient light and exposure. The shading on the main face (left cheek against right, forehead against chin) sets the direction of the key light. A blurred copy of the frame is the environment map that the eyes and noses reflect. Turn it off for studio lighting.
 - **Group photos.** For a still photo, the picture is searched again in overlapping tiles, so small faces in the back are found too. A face found in a tile is projected back into the whole picture.
-- **Head placement.** The animal replaces the whole head. Its size was measured from MediaPipe's canonical face model (eyes at y ≈ 2.7 cm, chin −9.4, face width ±7.7, plus room for the crown and hair). The head is centred at (0, 1.4, −2.2) cm with a radius of 13 cm and a taller crown, and a short furry neck covers the join to your neck. Then, every frame, the head slides along the camera ray until its eyes sit exactly in front of your irises. Measured on test photos, the animal's eye midpoint lands on the person's, and all 478 face landmarks are covered.
+- **Head placement.** The animal replaces the whole head, hair included. MediaPipe's canonical face has its eyes at y ≈ 2.7 cm, the chin at −9.4 and a width of ±7.7, and hair reaches about 13 to 15 cm above the eyes. The animal's eyes are at the middle of its head, and the head has a radius of about 15.6 cm (centred at eye height, 4 cm behind the face), so it reaches about 15 cm above and below your eyes. Then, every frame, the head slides along the camera ray until its eyes sit exactly in front of your irises. On test photos the head covers all 478 face landmarks and the hair, and its eye midpoint lands on the person's.
 - **Mirror.** The selfie camera shows the picture like a mirror, and the photo is saved the same way. The mirror button in the camera turns it off to see yourself as others do. The back camera is never mirrored.
 - **Smooth, not laggy.** Head tracking uses adaptive smoothing: steady when you hold still, quick when you move.
 - **What you see is what you post.** The camera shows a 4:5 crop, and the photo is that crop. Gallery photos keep their shape.
@@ -117,5 +129,5 @@ All from a CDN, pinned to exact versions in `index.html`:
 ## Limits
 
 - The live face detector is made for faces within about 2 m of the camera. Faces farther away are found in still photos (tiled search), but not always in the live view.
-- Building a new animal the first time takes a fraction of a second. The camera builds them all in the background as soon as it opens.
+- Sculpting a head takes a fraction of a second. It happens in a Web Worker, for every animal, as soon as the app or the camera opens.
 - Hands and hair in front of a face are not masked; the head is drawn over them.

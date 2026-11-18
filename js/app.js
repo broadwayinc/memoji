@@ -16,8 +16,8 @@
     `skapi`, `userReady`, `pageUrl` and `leavingOnPurpose` come from service.js.
 */
 import {
-    ANIMALS, MemojiStage, renderThumbnail, loadFaceLandmarker,
-    registerCustomModel, unregisterCustomModel, customModelInfo, setCustomFit, buildRig,
+    ANIMALS, MemojiStage, renderThumbnail, loadFaceLandmarker, ensureAnimal, prewarmAnimals,
+    registerCustomModel, unregisterCustomModel, customModelInfo, setCustomFit,
 } from "./memoji-engine.js";
 
 const $ = (id) => document.getElementById(id);
@@ -99,7 +99,7 @@ function lockScroll(on) {
 
 /* ================================================================== spirit animals & thumbnails */
 
-const THUMB_VERSION = "v5";
+const THUMB_VERSION = "v6";
 const thumbs = {};
 const thumbQueue = [];
 let thumbBusy = false;
@@ -143,7 +143,7 @@ function requestThumb(id) {
     if (!thumbBusy) setTimeout(drainThumbs, 30);
 }
 
-function drainThumbs() {
+async function drainThumbs() {
     const id = thumbQueue.shift();
     if (!id) {
         thumbBusy = false;
@@ -151,6 +151,8 @@ function drainThumbs() {
     }
     thumbBusy = true;
     try {
+        // The head is sculpted in a worker first, so rendering the thumbnail does not block the page.
+        if (!String(id).startsWith("custom")) await ensureAnimal(id);
         const url = renderThumbnail(id, 160);
         thumbs[id] = url;
         if (!String(id).startsWith("custom")) {
@@ -421,7 +423,8 @@ async function openCamera() {
         await stage.startCamera(facing);
         syncMirrorButton();
         camHint("Loading the face tracker…");
-        prewarmAnimals();
+        // Every animal is sculpted in a background worker, so a new face gets its head without a pause.
+        prewarmAnimals([spirit, ...ANIMALS.map((a) => a.id).filter((id) => id !== spirit)].filter((id) => !String(id).startsWith("custom")));
         await loading;
         camHint("Looking for faces…");
         $("shutterButton").disabled = false;
@@ -443,23 +446,6 @@ function closeCamera() {
     lockScroll(false);
 }
 
-/*
-    Build every animal once in the background, one at a time, so a new face gets its head without a pause.
-*/
-function prewarmAnimals() {
-    const ids = ANIMALS.map((a) => a.id).filter((id) => id !== spirit);
-    const next = () => {
-        const id = ids.shift();
-        if (!id || $("cameraSheet").hidden) return;
-        try {
-            buildRig(id).dispose();
-        } catch (err) {
-            console.error(err);
-        }
-        setTimeout(next, 120);
-    };
-    setTimeout(next, 400);
-}
 
 async function takePhoto() {
     if (!stage) return;

@@ -19,9 +19,9 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { clone as skeletonClone } from "three/addons/utils/SkeletonUtils.js";
-import { ANIMALS, buildAnimal, readExpression, HEAD_CENTER, HEAD_SCALE } from "./animals.js";
+import { ANIMALS, buildAnimal, readExpression, ensureAnimal, prewarmAnimals, CUSTOM_CENTER, CUSTOM_SCALE } from "./animals.js";
 
-export { ANIMALS };
+export { ANIMALS, ensureAnimal, prewarmAnimals };
 
 const MP_VERSION = "0.10.21";
 const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
@@ -392,8 +392,8 @@ function buildCustom(id) {
     const fitG = new THREE.Group();
     fitG.add(inst);
     const holder = new THREE.Group();
-    holder.position.set(HEAD_CENTER[0], HEAD_CENTER[1], HEAD_CENTER[2]);
-    holder.scale.setScalar(HEAD_SCALE);
+    holder.position.set(CUSTOM_CENTER[0], CUSTOM_CENTER[1], CUSTOM_CENTER[2]);
+    holder.scale.setScalar(CUSTOM_SCALE);
     holder.add(fitG);
 
     const targets = new Map(); // normalized name -> [[mesh, index]]
@@ -492,11 +492,15 @@ function thumbRenderer() {
         const scene = new THREE.Scene();
         const pmrem = new THREE.PMREMGenerator(renderer);
         scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-        scene.environmentIntensity = 0.8;
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a70, 1.3));
-        const key = new THREE.DirectionalLight(0xffffff, 2.2);
-        key.position.set(0.6, 1, 1.2);
+        // Soft studio light with a clear shadow side, like a product shot of a vinyl toy.
+        scene.environmentIntensity = 0.55;
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x9a8a80, 0.8));
+        const key = new THREE.DirectionalLight(0xfffaf2, 2.6);
+        key.position.set(-0.7, 1.1, 1.2);
         scene.add(key);
+        const rimL = new THREE.DirectionalLight(0xe8f0ff, 0.6);
+        rimL.position.set(1, 0.3, -0.6);
+        scene.add(rimL);
         const cam = new THREE.PerspectiveCamera(28, 1, 1, 1000);
         thumb = { renderer, scene, cam };
     }
@@ -583,7 +587,7 @@ export class MemojiStage {
         this.pmrem = new THREE.PMREMGenerator(renderer);
         this.studioEnv = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
         this.scene.environment = this.studioEnv;
-        this.scene.environmentIntensity = 0.85;
+        this.scene.environmentIntensity = 0.6;
 
         this.hemi = new THREE.HemisphereLight(0xffffff, 0x8a7a70, 1.2);
         this.key = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -630,8 +634,8 @@ export class MemojiStage {
 
     defaultLight() {
         return {
-            sky: new THREE.Color(0xffffff), ground: new THREE.Color(0x8a7a70), hemi: 1.2,
-            keyDir: new THREE.Vector3(0.45, 0.75, 0.6).normalize(), keyColor: new THREE.Color(0xffffff), keyInt: 2.2,
+            sky: new THREE.Color(0xffffff), ground: new THREE.Color(0x8a7a70), hemi: 0.9,
+            keyDir: new THREE.Vector3(0.45, 0.75, 0.6).normalize(), keyColor: new THREE.Color(0xffffff), keyInt: 2.6,
             fillInt: 0.45, exposure: 1.0,
         };
     }
@@ -1121,7 +1125,7 @@ export class MemojiStage {
                         n++;
                     }
                 });
-                t.rig.eyeMid = n ? sum.divideScalar(n) : new THREE.Vector3(0, HEAD_CENTER[1] + 0.1 * HEAD_SCALE, HEAD_CENTER[2] + 0.93 * HEAD_SCALE);
+                t.rig.eyeMid = n ? sum.divideScalar(n) : new THREE.Vector3(0, CUSTOM_CENTER[1] + 0.1 * CUSTOM_SCALE, CUSTOM_CENTER[2] + 0.93 * CUSTOM_SCALE);
                 t.anchor.add(t.rig.object);
             }
             const still = this.mode === "still";
@@ -1217,7 +1221,7 @@ export class MemojiStage {
         const L = luma(all);
         goal.sky = tint(top, 0.35);
         goal.ground = tint(bottom, 0.45).multiplyScalar(0.7);
-        goal.hemi = 0.55 + clamp(L * 4, 0, 1.5);
+        goal.hemi = 0.45 + clamp(L * 3.2, 0, 1.2);
         goal.keyColor = tint(all, 0.25);
 
         // The shading on the main face tells where the light comes from.
@@ -1246,7 +1250,7 @@ export class MemojiStage {
             const local = new THREE.Vector3(lx, ly, 1).normalize();
             goal.keyDir = local.applyQuaternion(t.quat).normalize();
             const contrast = clamp(Math.abs(lx) * 0.5 + Math.abs(ly - 0.45) * 0.5, 0, 1);
-            goal.keyInt = 1.4 + contrast * 2.4;
+            goal.keyInt = 1.9 + contrast * 2.2;
             goal.fillInt = 0.55 - contrast * 0.35;
         }
         // Exposure follows the brightness of the face (or the frame): a dim room gives a dimmer memoji.
