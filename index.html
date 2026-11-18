@@ -8,6 +8,13 @@
     <meta name="description" content="Snap a photo and every face turns into a cute 3D animal memoji. Share it, like, comment and follow.">
     <meta name="theme-color" content="#fff8f3">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/favicon-48.png" sizes="48x48" type="image/png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="memoji">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -75,6 +82,15 @@
     </nav>
 
     <main class="feed-wrap">
+        <!-- Install the app / turn on notifications (app.js: updatePwaBanner()). -->
+        <div class="pwa-banner" id="pwaBanner" hidden role="region" aria-label="memoji app">
+            <img src="icons/icon-192.png" alt="" width="44" height="44">
+            <p id="pwaBannerText"></p>
+            <div class="pwa-banner-actions">
+                <button type="button" class="btn small primary" id="pwaBannerGo">Install</button>
+                <button type="button" class="link-btn" id="pwaBannerLater">Not now</button>
+            </div>
+        </div>
         <div class="view-head">
             <h1 id="postsHeading">Recent</h1>
             <div id="viewExtra"></div>
@@ -229,6 +245,10 @@
                 <svg><use href="#i-cube"/></svg> Upload a 3D model
             </label>
             <p class="hint" id="modelStatus" role="status"></p>
+
+            <h3>The memoji app</h3>
+            <p class="hint" id="installStatus"></p>
+            <button type="button" class="btn primary" id="installButton" hidden>Install memoji</button>
 
             <div class="profile-foot">
                 <button type="button" class="btn ghost" id="logoutButton">Log out</button>

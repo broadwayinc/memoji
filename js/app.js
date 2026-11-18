@@ -400,7 +400,7 @@ function camHint(text) {
     $("camHint").textContent = text || "";
 }
 
-async function openCamera() {
+async function openCamera({ photo = null } = {}) {
     $("cameraSheet").hidden = false;
     lockScroll(true);
     $("shutterButton").disabled = true;
@@ -419,6 +419,10 @@ async function openCamera() {
     stage.setAutoLight($("lightButton").getAttribute("aria-pressed") === "true");
     renderSpiritPickers();
     updateFitPanel();
+    if (photo) {
+        prewarmAnimals([spirit, ...ANIMALS.map((a) => a.id)].filter((id) => !String(id).startsWith("custom")));
+        return usePhotoFromGallery(photo);
+    }
     camHint("Starting camera…");
     try {
         const loading = loadFaceLandmarker();
@@ -632,6 +636,14 @@ function showPosts(articles, fetchMore, requestGeneration) {
 }
 
 function showFetchError(err, fetchMore, retry) {
+    if (!navigator.onLine) {
+        // The app itself works offline (it is cached); posts come back with the connection.
+        if (!section_posts.querySelector("article")) showEmptyMessage("You're offline 📴 Posts will load as soon as you're back online.");
+        else toast("You're offline. More posts will load when you're back online.");
+        fetchMoreButton.disabled = false;
+        fetchMoreButton.onclick = retry;
+        return;
+    }
     if (fetchMore && section_posts.querySelector("article")) {
         toast(`Unable to load more posts: ${err.message}`);
         fetchMoreButton.disabled = false;
@@ -1125,6 +1137,12 @@ function markCurrentTab(hash) {
 */
 async function initialFetch() {
     if (!me) return;
+    // App shortcuts and notifications open these; they are actions, not views.
+    const action = location.hash.slice(1);
+    if (["camera", "activity", "profile", "shared"].includes(action)) {
+        history.replaceState(null, "", location.pathname + location.search);
+        runAction(action);
+    }
     const hash = location.hash.slice(1);
     $("postsHeading").textContent = viewTitle(hash);
     $("viewExtra").replaceChildren();
@@ -1263,6 +1281,9 @@ function openActivityTarget(item) {
 function renderActivity() {
     const list = readActivity();
     const unread = list.filter((a) => a.unread).length;
+    // The number on the installed app's icon.
+    if (unread) navigator.setAppBadge?.(unread).catch(() => { });
+    else navigator.clearAppBadge?.().catch(() => { });
     for (const b of document.querySelectorAll("#activityButton .badge, #topActivityButton .badge")) {
         b.hidden = !unread;
         b.textContent = unread > 9 ? "9+" : unread;
@@ -1293,6 +1314,7 @@ function renderActivity() {
 
 function openActivity() {
     openPanel("activityPanel");
+    navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_BADGE" });
     renderActivity();
     // Opening the list marks everything read.
     const list = readActivity();
@@ -1326,6 +1348,11 @@ async function currentPushSubscription() {
 
 async function updatePushUi() {
     const btn = $("pushButton"), status = $("pushStatus");
+    if (isIOS && !isStandalone()) {
+        btn.hidden = true;
+        status.textContent = "On iPhone and iPad, notifications work in the installed app: tap Share, then \u201cAdd to Home Screen\u201d, and open memoji from your Home Screen.";
+        return;
+    }
     if (!pushSupported()) {
         btn.hidden = true;
         status.textContent = window.isSecureContext
@@ -1346,6 +1373,45 @@ async function updatePushUi() {
     }
 }
 
+// Ask for permission, subscribe this device with Skapi's VAPID key and register it for the logged in user.
+async function enablePush() {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") throw new Error("Notifications were not allowed. You can allow them in the browser's or the phone's settings.");
+    const { VAPIDPublicKey } = await skapi.vapidPublicKey();
+    const registration = (await swReady) || (await navigator.serviceWorker.register("sw.js"));
+    await navigator.serviceWorker.ready;
+    const subscription = (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPIDPublicKey),
+    })).toJSON();
+    await skapi.subscribeNotification(subscription.endpoint, subscription.keys);
+    try { localStorage.setItem("memoji:push-user", me.user_id); } catch (err) { /* blocked */ }
+    updatePwaBanner();
+}
+
+/*
+    A device's push subscription belongs to whoever is logged in on it. On every start the subscription
+    is sent to Skapi again for the current user (so it survives the browser renewing it, and follows a
+    different account logging in on the same device). force: subscribe again if the browser dropped it.
+*/
+async function syncPushSubscription(force = false) {
+    if (!pushSupported() || Notification.permission !== "granted") return;
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub && force) {
+            await enablePush();
+            return;
+        }
+        if (!sub) return;
+        const json = sub.toJSON();
+        await skapi.subscribeNotification(json.endpoint, json.keys);
+        try { localStorage.setItem("memoji:push-user", me.user_id); } catch (err) { /* blocked */ }
+    } catch (err) {
+        console.warn("Could not sync the push subscription", err);
+    }
+}
+
 async function togglePush() {
     const btn = $("pushButton");
     btn.disabled = true;
@@ -1357,16 +1423,7 @@ async function togglePush() {
             await skapi.unsubscribeNotification(json.endpoint, json.keys);
             toast("Notifications off");
         } else {
-            const permission = await Notification.requestPermission();
-            if (permission !== "granted") throw new Error("Notifications were not allowed in the browser.");
-            const { VAPIDPublicKey } = await skapi.vapidPublicKey();
-            const registration = await navigator.serviceWorker.register("sw.js");
-            await navigator.serviceWorker.ready;
-            const subscription = (await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(VAPIDPublicKey),
-            })).toJSON();
-            await skapi.subscribeNotification(subscription.endpoint, subscription.keys);
+            await enablePush();
             toast("Notifications on 🔔");
         }
     } catch (err) {
@@ -1374,6 +1431,173 @@ async function togglePush() {
     } finally {
         btn.disabled = false;
         updatePushUi();
+    }
+}
+
+/* ================================================================== installable app (PWA) */
+
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let installPrompt = null;
+let updateRequested = false;
+
+window.addEventListener("beforeinstallprompt", (event) => {
+    // Keep the browser's install prompt for the Install buttons.
+    event.preventDefault();
+    installPrompt = event;
+    updatePwaBanner();
+    updateInstallUi();
+});
+
+window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    toast("memoji is installed 🎉 Find it on your home screen.");
+    updatePwaBanner();
+    updateInstallUi();
+});
+
+function canInstall() {
+    return !isStandalone() && (!!installPrompt || isIOS);
+}
+
+async function installApp() {
+    if (installPrompt) {
+        installPrompt.prompt();
+        await installPrompt.userChoice.catch(() => null);
+        installPrompt = null;
+        updatePwaBanner();
+        updateInstallUi();
+    } else if (isIOS && !isStandalone()) {
+        alert("To install memoji: tap the Share button (the square with an arrow), then \u201cAdd to Home Screen\u201d.");
+    }
+}
+
+function updateInstallUi() {
+    const btn = $("installButton"), status = $("installStatus");
+    if (isStandalone()) {
+        btn.hidden = true;
+        status.textContent = "You're using the memoji app. 🎉";
+    } else if (canInstall()) {
+        btn.hidden = false;
+        status.textContent = isIOS
+            ? "Add memoji to your Home Screen: it opens full screen, and on iPhone that is what turns on notifications."
+            : "Install memoji: it opens full screen like an app and keeps notifications coming.";
+    } else {
+        btn.hidden = true;
+        status.textContent = "You can install memoji from your browser's menu (\u201cInstall app\u201d or \u201cAdd to Home Screen\u201d).";
+    }
+}
+
+/*
+    One gentle banner above the feed: install the app, or (once installed or where it is not needed)
+    turn notifications on. "Not now" hides it for a week.
+*/
+function bannerDismissed(kind) {
+    try {
+        return Date.now() - Number(localStorage.getItem("memoji:banner:" + kind) || 0) < 7 * 864e5;
+    } catch (err) {
+        return false;
+    }
+}
+
+function updatePwaBanner() {
+    const box = $("pwaBanner");
+    if (!me) return (box.hidden = true);
+    let kind = null;
+    if (!isStandalone() && installPrompt && !bannerDismissed("install")) kind = "install";
+    else if (!isStandalone() && isIOS && !bannerDismissed("ios")) kind = "ios";
+    else if (pushSupported() && Notification.permission === "default" && !bannerDismissed("notify")) kind = "notify";
+    box.hidden = !kind;
+    if (!kind) return;
+    box.dataset.kind = kind;
+    const text = {
+        install: "Get the memoji app: full screen camera, and notifications for likes, comments and new followers.",
+        ios: "Install memoji: tap Share, then \u201cAdd to Home Screen\u201d. On iPhone that's what turns on notifications.",
+        notify: "Turn on notifications to hear about likes, comments, new followers and new posts from people you follow.",
+    }[kind];
+    $("pwaBannerText").textContent = text;
+    $("pwaBannerGo").textContent = { install: "Install", ios: "Got it", notify: "Turn on" }[kind];
+}
+
+$("pwaBannerGo").onclick = async () => {
+    const kind = $("pwaBanner").dataset.kind;
+    if (kind === "install") await installApp();
+    else if (kind === "ios") dismissBanner("ios");
+    else if (kind === "notify") {
+        try {
+            await enablePush();
+            toast("Notifications on 🔔");
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+    updatePwaBanner();
+};
+$("pwaBannerLater").onclick = () => dismissBanner($("pwaBanner").dataset.kind);
+
+function dismissBanner(kind) {
+    try { localStorage.setItem("memoji:banner:" + kind, String(Date.now())); } catch (err) { /* blocked */ }
+    updatePwaBanner();
+}
+
+// A new version of the app is ready: offer it, never reload by itself (it could be mid-photo).
+function watchForUpdates(reg) {
+    if (!reg) return;
+    const offer = (worker) => toast("A new version of memoji is ready. Tap to update ✨", {
+        ms: 20000,
+        onClick: () => {
+            updateRequested = true;
+            worker.postMessage({ type: "SKIP_WAITING" });
+        },
+    });
+    if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+    reg.addEventListener("updatefound", () => {
+        const w = reg.installing;
+        w?.addEventListener("statechange", () => {
+            if (w.state === "installed" && navigator.serviceWorker.controller) offer(w);
+        });
+    });
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (updateRequested) location.reload();
+    });
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reg.update().catch(() => { });
+    });
+}
+
+// Messages from the service worker: notification clicks, pushes while the app is open.
+navigator.serviceWorker?.addEventListener?.("message", (event) => {
+    const msg = event.data || {};
+    if (msg.type === "OPEN" && msg.open) {
+        if (["camera", "activity", "profile", "shared"].includes(msg.open)) runAction(msg.open);
+        else location.hash = msg.open;
+    } else if (msg.type === "PUSH" && msg.data?.type === "record") {
+        toast(msg.data.title || "New post from someone you follow", { onClick: () => (location.hash = "post=" + msg.data.record_id) });
+    } else if (msg.type === "RESUBSCRIBE") {
+        syncPushSubscription(true);
+    }
+});
+
+function runAction(action) {
+    if (action === "camera") openCamera();
+    else if (action === "activity") openActivity();
+    else if (action === "profile") openProfile();
+    else if (action === "shared") openSharedPhoto();
+}
+
+// A photo shared to memoji from another app (see the share target in sw.js and the manifest).
+async function openSharedPhoto() {
+    try {
+        const cache = await caches.open("memoji-share");
+        const key = new URL("shared-photo", location.href).href;
+        const res = await cache.match(key);
+        if (!res) return openCamera();
+        const blob = await res.blob();
+        await cache.delete(key);
+        await openCamera({ photo: blob });
+    } catch (err) {
+        console.error(err);
+        openCamera();
     }
 }
 
@@ -1392,6 +1616,7 @@ function closePanels() {
 
 async function openProfile() {
     openPanel("profilePanel");
+    updateInstallUi();
     renderSpiritPickers();
     $("profileName").textContent = authorLabel(me);
     $("guestNote").hidden = !me.anonymous;
@@ -1476,9 +1701,17 @@ $("topActivityButton").onclick = openActivity;
 $("meButton").onclick = openProfile;
 $("topMeButton").onclick = openProfile;
 $("pushButton").onclick = togglePush;
+$("installButton").onclick = installApp;
 $("logoutButton").onclick = async () => {
     leavingOnPurpose = true;
     try {
+        // This device stops getting this account's notifications (the next login registers it again).
+        const sub = await currentPushSubscription().catch(() => null);
+        if (sub) {
+            const json = sub.toJSON();
+            await skapi.unsubscribeNotification(json.endpoint, json.keys).catch(() => { });
+        }
+        navigator.clearAppBadge?.().catch(() => { });
         await skapi.logout();
     } catch (err) {
         console.error(err);
@@ -1497,6 +1730,11 @@ document.addEventListener("keydown", (e) => {
     else closePanels();
 });
 window.addEventListener("hashchange", initialFetch);
+// Back online: reload the feed if it could not load.
+window.addEventListener("online", () => {
+    if (!section_posts.querySelector("article")) initialFetch();
+    if (!realtimeReady) connectRealtime();
+});
 
 /* ================================================================== start */
 
@@ -1518,8 +1756,8 @@ window.addEventListener("hashchange", initialFetch);
     }
     // Render the built-in thumbnails in the background for the pickers.
     for (const a of ANIMALS) thumbUrl(a.id);
-    // Opened from a notification while the app was closed.
-    navigator.serviceWorker?.addEventListener?.("message", (e) => {
-        if (e.data?.open) location.hash = e.data.open;
-    });
+    // Installable app: banners, notifications for this account on this device, updates.
+    updatePwaBanner();
+    syncPushSubscription();
+    swReady.then(watchForUpdates);
 })();

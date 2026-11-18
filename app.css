@@ -759,6 +759,28 @@ textarea:focus, input:focus { border-color: var(--accent); }
 .upload-btn { cursor: pointer; }
 .profile-foot { margin-top: 1.6rem; display: flex; justify-content: center; }
 
+/* ---------------------------------------------------------- install / notifications banner */
+
+.pwa-banner {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .4rem .8rem;
+    align-items: center;
+    margin: .3rem 0 1rem;
+    padding: .8rem .9rem;
+    border-radius: 20px;
+    background: var(--card);
+    box-shadow: var(--shadow), 0 0 0 1.5px var(--line) inset;
+}
+.pwa-banner img { border-radius: 12px; grid-row: span 2; }
+.pwa-banner p { margin: 0; font-size: .9rem; font-weight: 600; }
+.pwa-banner-actions { display: flex; align-items: center; gap: .8rem; }
+
+/* The installed app has no browser bar: leave room for the status bar on phones with a notch. */
+@media (display-mode: standalone) {
+    .topbar { padding-top: calc(.6rem + env(safe-area-inset-top)); }
+}
+
 /* ---------------------------------------------------------- toast */
 
 .toast {

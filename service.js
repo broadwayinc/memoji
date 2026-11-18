@@ -59,6 +59,17 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /*
+    memoji is an installable app (a PWA): the service worker (sw.js) caches it for a fast, offline-able
+    start and shows push notifications. It is registered from every page.
+*/
+const swReady = "serviceWorker" in navigator
+    ? navigator.serviceWorker.register("sw.js").catch((err) => {
+        console.warn("Service worker not registered", err);
+        return null;
+    })
+    : Promise.resolve(null);
+
+/*
     Pages that need a logged in user. A visitor who opens one of them while logged out is sent to
     login.html, and login.html brings them back after they log in.
 */

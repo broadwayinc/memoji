@@ -39,7 +39,8 @@ MediaPipe's raw blendshapes are small and mixed: a big smile also lowers the bro
 | `index.html`, `app.css` | The app page and its design (light and dark). |
 | `login.html`, `signup.html`, `signup-success.html`, `forgot-password.html`, `reset-password.html` | Accounts, from the template, restyled. Guests can try it with **Try it as a guest**. |
 | `service.js` | Creates `skapi`, keeps the login gate (same as the template's). |
-| `sw.js` | Service worker that shows push notifications. |
+| `sw.js` | Service worker: offline cache, updates, share target, push notifications. |
+| `manifest.webmanifest`, `icons/`, `offline.html` | The installable app: manifest, icons, offline page. |
 
 Details worth knowing:
 
@@ -50,6 +51,26 @@ Details worth knowing:
 - **Mirror.** The selfie camera shows the picture like a mirror, and the photo is saved the same way. The mirror button in the camera turns it off to see yourself as others do. The back camera is never mirrored.
 - **Smooth, not laggy.** Head tracking uses adaptive smoothing: steady when you hold still, quick when you move.
 - **What you see is what you post.** The camera shows a 4:5 crop, and the photo is that crop. Gallery photos keep their shape.
+
+## An installable app (PWA)
+
+memoji installs like a native app (Android, desktop Chrome / Edge, iPhone and iPad from iOS 16.4) and keeps working offline as far as it can.
+
+- **Manifest** (`manifest.webmanifest`): name, icons (the 3D bunny, also as maskable and Apple touch icons in `icons/`), full-screen standalone display and theme colours. It also has:
+  - **app shortcuts**: long-press the icon for *Take a memoji*, *Activity* and *Following*;
+  - a **share target**: share a photo from the gallery or another app to memoji, and it opens in the memoji camera with its faces turned into animals.
+- **Service worker** (`sw.js`):
+  - **Caching:** the app shell (pages, styles, scripts, icons) is cached on install and loaded network-first, so online you always get the newest version and offline the cached one. The CDN libraries (three.js, MediaPipe and its face model, fonts) are cached on first use, so later starts are fast. Skapi's API is never cached. `offline.html` covers pages never opened before.
+  - **Updates:** a new version waits until you tap the *new version is ready* toast, so it never reloads in the middle of a photo.
+- **Install:** a banner above the feed offers to install the app (with the steps for iPhone, where Safari has no install prompt). Your profile has an *Install memoji* button too.
+- **Notifications:**
+  - The banner, then the **Activity** panel, turn on push notifications for the device: `vapidPublicKey()`, `pushManager.subscribe()`, `subscribeNotification()`.
+  - On every launch the device's subscription is sent to Skapi again for whoever is logged in. Logging out removes it, so a shared device never gets the previous account's notifications.
+  - Notifications show the app icon and a monochrome paw badge, and group by post. Tapping one focuses memoji (or opens it) at the post.
+  - The app icon shows the number of unread activity items (Badging API).
+  - On iPhone and iPad, web push only works in the installed app: add memoji to the Home Screen and open it from there.
+
+To change the app, bump `VERSION` in `sw.js` so every installed copy picks up the new files.
 
 ## Data on Skapi
 
