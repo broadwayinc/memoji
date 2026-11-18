@@ -185,7 +185,9 @@ function readSpirit(user) {
     }
     let saved = null;
     try { saved = localStorage.getItem("memoji:spirit:" + user.user_id); } catch (err) { /* blocked */ }
-    return profileMisc.spirit || saved || "bunny";
+    const id = profileMisc.spirit || saved || "bunny";
+    // An animal that is no longer offered (or a model saved by its id) falls back to the bunny.
+    return id.startsWith("custom:") || ANIMALS.some((a) => a.id === id) ? id : "bunny";
 }
 
 /*

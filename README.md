@@ -6,7 +6,7 @@ It is the photo gallery of the Skapi HTML template (`templates-skapi/database.ht
 
 ## Spirit animals
 
-Bunny, bear, hamster, beaver, lion, tiger, turtle, shark, gorilla, alien and a little white sheet ghost. You can also upload your own 3D model (see below).
+Bunny, bear, hamster, beaver, lion, tiger, koala, monkey, gorilla, alien and a little white sheet ghost. You can also upload your own 3D model (see below).
 
 The heads are made procedurally, with nothing downloaded, in the style of soft vinyl / clay toy icons: simple pastel colour blocks and detail that comes from the sculpted shape, not from textures or polygon count.
 
@@ -15,15 +15,14 @@ The heads are made procedurally, with nothing downloaded, in the style of soft v
   - cheek pouches or cheek tufts;
   - a scalloped mane;
   - a brow ridge and crest;
-  - a dorsal fin;
-  - gill grooves cut into the sides;
-  - cupped ears with their inside modelled.
+  - a monkey's raised heart-shaped face mask and hair tuft;
+  - cupped ears with their inside modelled, and the koala's big fluffy ears with a scalloped rim.
 
   The blend is meshed with surface nets into about 40k triangles, with perfectly smooth normals. It runs in a Web Worker (`js/heads-worker.js`), so the camera never stutters.
-- **Pastel colour blocks**: muzzle, inner ears, stripes, blush, belly. They are vertex colours whose edges follow the sculpt.
+- **Pastel colour blocks**: muzzle, inner ears, stripes, blush, face mask. They are vertex colours whose edges follow the sculpt.
 - **Glossy bead eyes** that slide to **follow your gaze** and **blink** with you. Gaze is read from where your iris sits between the eye corners; blinks from how open each eye is, against your own open eye.
 - **Expressions**: **smile** (the eyes close into happy ^ ^ arcs), **laugh**, **sad** (lids and brows tilt, mouth corners go down, ears droop), **angry** (lids and brows slant into a V), **surprised** (bigger eyes, brows up, round mouth), **kiss**, wink, cheek puff and nose scrunch. Brows only appear while you make an expression, so a relaxed face stays clean.
-- **Mouths** with tongues and teeth (buck teeth, fangs, shark teeth), plus whiskers and nostrils.
+- **Mouths** with tongues and teeth (buck teeth, fangs, rows of teeth), plus whiskers and nostrils.
 - **Springy parts**: ears and alien antennae wobble when you move.
 
 MediaPipe's raw blendshapes are small and mixed: a big smile also lowers the brows, and `browInnerUp` rises both when sad and when surprised. `readExpression()` in `js/animals.js` turns them into clean expressions, and a slow per-person baseline makes a resting face read as neutral.

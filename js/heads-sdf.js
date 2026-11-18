@@ -263,6 +263,36 @@ function longEar(len, w, outer, inner) {
     return { sdf, color, bounds: [[-w * 1.3, -0.1, -w], [w * 1.3, len * 1.2, w]], cell: w / 13 };
 }
 
+/*
+    A big koala ear: a round disc with a fluffy, scalloped rim and a soft white inside.
+*/
+function fluffyEar(r, outer, inner) {
+    const cy = r * 0.85;
+    const N = 11;
+    const tufts = [];
+    for (let i = 0; i < N; i++) {
+        const a = Math.PI * (0.05 + (0.9 * i) / (N - 1)) - Math.PI * 0.4; // around the outer edge
+        tufts.push([Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86]);
+    }
+    const sdf = (x, y, z) => {
+        let d = sdEll(x, y, z, 0, cy, 0, r, r * 0.95, r * 0.36);
+        for (const [tx, ty] of tufts) d = smin(d, sdSphere(Math.abs(x), y, z, tx, ty, r * 0.12, r * 0.2), r * 0.1);
+        const cup = sdEll(x, y, z, 0, cy - r * 0.04, r * 0.3, r * 0.6, r * 0.56, r * 0.24);
+        return smax(d, -cup, r * 0.1);
+    };
+    const O = col(outer), I = col(inner);
+    const color = (x, y, z) => {
+        // Grey disc, a white fluffy inside, and a lighter fluffy rim.
+        const rr = Math.hypot(x, (y - cy) / 0.95);
+        const front = smooth(-r * 0.02, r * 0.12, z);
+        const centre = inside(rr - r * 0.66, r * 0.06) * front;
+        const rim = smooth(r * 0.82, r * 0.95, rr) * front;
+        return mixc(mixc(O, I, rim * 0.45), I, centre);
+    };
+    const m = r * 1.35;
+    return { sdf, color, bounds: [[-m, -0.25 * r, -m * 0.5], [m, cy + m, m * 0.55]], cell: r / 16 };
+}
+
 /* ------------------------------------------------------------------ the zoo */
 
 /*
@@ -440,58 +470,53 @@ H.tiger = (() => {
     };
 })();
 
-H.turtle = (() => {
-    const skin = col("#b5dd98"), jaw = col("#e8f4c6"), spot = col("#9ccc80"), blush = col("#f6c2b6");
+H.koala = (() => {
+    const fur = col("#8c8aa0"), chin = col("#dddce6"), blush = col("#eab3c2");
     const sdf = (x, y, z) => {
-        let d = sdEll(x, y, z, 0, 0.0, 0, 1.12, 0.84, 1.0);
-        d = smin(d, sdEll(x, y, z, 0, -0.32, 0.32, 0.92, 0.48, 0.74), 0.22);
-        d = smin(d, sdEll(Math.abs(x), y, z, 0.35, 0.16, 0.82, 0.18, 0.1, 0.13), 0.08); // brow bumps
+        let d = bean(x, y, z, 1.1, 0.9, 0.95, 1.05);
+        // A soft rise under the big nose, and fuller cheeks.
+        d = smin(d, sdEll(x, y, z, 0, -0.3, 0.7, 0.32, 0.26, 0.3), 0.12);
         return d;
     };
     const color = (x, y, z) => {
-        let c = mixc(skin, jaw, inside(y + 0.3 - 0.12 * x * x - 0.05 * (1 - z), 0.02) * smooth(0.1, 0.4, z));
-        let sp = 0;
-        for (const [sx, sy, sz, r] of [[0.0, 0.78, 0.35, 0.13], [0.35, 0.62, 0.55, 0.1], [-0.4, 0.6, 0.5, 0.11], [0.6, 0.35, 0.65, 0.08], [-0.62, 0.32, 0.62, 0.07]]) sp = Math.max(sp, inside(sdSphere(x, y, z, sx, sy, sz, r), 0.015));
-        c = mixc(c, spot, sp);
-        return mixc(c, blush, inside(sdSphere(Math.abs(x), y, z, 0.6, -0.12, 0.74, 0.12), 0.04) * 0.7);
+        let c = mixc(fur, chin, inside(sdEll(x, y, z, 0, -0.6, 0.6, 0.55, 0.3, 0.5), 0.03));
+        return mixc(c, blush, inside(sdSphere(Math.abs(x), y, z, 0.6, -0.2, 0.72, 0.13), 0.04) * 0.55);
     };
     return {
-        head: { sdf, color, bounds: [[-1.4, -1.1, -1.2], [1.4, 1.0, 1.3]], cell: 0.03, morphs: headMorphs() },
-        eyes: { dir: [0.3, 0.01, 0.93], r: 0.085 },
-        brows: { color: "#7fae67", lift: 0.18 },
-        nostrils: { dir: [0, -0.06, 1], color: "#6f9a5a", gap: 0.05, r: 0.018 },
-        mouth: { dir: [0, -0.34, 0.95], w: 0.26, style: "smile", line: "#6f9a5a", curv: 0.5 },
+        head: { sdf, color, bounds: [[-1.45, -1.15, -1.2], [1.45, 1.15, 1.3]], cell: 0.03, morphs: headMorphs() },
+        ear: fluffyEar(0.44, "#8c8aa0", "#f7f5f9"),
+        ears: { dir: [0.86, 0.5, 0.0], upright: 0.35, splay: 0.45, sink: 0.14, k: 110, c: 9, floppy: 0.6 },
+        eyes: { dir: [0.3, 0.02, 0.94], r: 0.08 },
+        brows: { color: "#6f6d84", lift: 0.18 },
+        nose: { dir: [0, -0.14, 1], color: "#4d4857", size: 0.15, shape: "oval" },
+        mouth: { dir: [0, -0.5, 0.88], w: 0.11, style: "smile", line: "#6e6a7a", curv: 0.8 },
     };
 })();
 
-H.shark = (() => {
-    const top = col("#a6cdf2"), belly = col("#f7fbff"), groove = col("#7fa8d6");
-    const gills = [];
-    for (let i = 0; i < 3; i++) gills.push([0.95, 0.12, 0.08 - i * 0.15, 0.88, -0.22, 0.04 - i * 0.15]);
+H.monkey = (() => {
+    const fur = col("#cf9566"), face = col("#f7dcc4"), blush = col("#f2b4a6"), dark = col("#b67c52");
+    // The face: a heart shaped mask (two eye lobes and a muzzle), slightly raised from the head.
+    const mask = (x, y, z) => smin(sdEll(Math.abs(x), y, z, 0.26, 0.06, 0.62, 0.34, 0.32, 0.4), sdEll(x, y, z, 0, -0.34, 0.6, 0.52, 0.38, 0.42), 0.12);
     const sdf = (x, y, z) => {
-        const ax = Math.abs(x);
-        let d = sdEll(x, y, z, 0, 0, 0, 1.0, 0.9, 1.06);
-        d = smin(d, sdEll(x, y, z, 0, 0.08, 0.68, 0.64, 0.52, 0.46), 0.2);
-        // Dorsal fin: a thin, swept-back, rounded blade.
-        d = smin(d, sdCone(x * 2.4, y, z, 0, 0.78, -0.2, 0, 1.38, -0.6, 0.3, 0.05), 0.08);
-        // Gill grooves cut into the sides.
-        for (const g of gills) d = smax(d, -sdCone(ax, y, z, g[0], g[1], g[2], g[3], g[4], g[5], 0.02, 0.018), 0.025);
+        let d = bean(x, y, z, 1.0, 0.95, 0.95);
+        d = smin(d, mask(x, y, z), 0.1);
+        // A little tuft of hair on top.
+        d = smin(d, sdCone(x, y, z, 0, 0.84, 0.12, 0.1, 1.12, 0.22, 0.1, 0.025), 0.1);
+        d = smin(d, sdCone(x, y, z, 0.02, 0.86, 0.1, -0.12, 1.06, 0.16, 0.07, 0.02), 0.08);
         return d;
     };
     const color = (x, y, z) => {
-        const ax = Math.abs(x);
-        const b = inside(y + 0.12 - 0.12 * smooth(0.2, 1, ax) + 0.06 * (1 - z), 0.02) * smooth(-0.2, 0.3, z);
-        let c = mixc(top, belly, b);
-        let g = 0;
-        for (const q of gills) g = Math.max(g, inside(sdCone(ax, y, z, q[0], q[1], q[2], q[3], q[4], q[5], 0.045, 0.04), 0.01));
-        return mixc(c, groove, g);
+        let c = mixc(mixc(fur, dark, smooth(0.7, 1.05, y) * 0.6), face, onPart(mask(x, y, z), 0.035));
+        return mixc(c, blush, inside(sdSphere(Math.abs(x), y, z, 0.44, -0.22, 0.86, 0.11), 0.04) * 0.6);
     };
     return {
-        head: { sdf, color, bounds: [[-1.3, -1.1, -1.25], [1.3, 1.6, 1.4]], cell: 0.03, morphs: headMorphs() },
-        eyes: { dir: [0.42, 0.09, 0.9], r: 0.085 },
-        brows: { color: "#6f94c2", lift: 0.18 },
-        nostrils: { dir: [0, 0.1, 1], color: "#7fa8d6", gap: 0.14, r: 0.016 },
-        mouth: { dir: [0, -0.32, 0.96], w: 0.27, style: "smile", line: "#6f94c2", teeth: "shark", cavity: "#7a3040", curv: 0.6 },
+        head: { sdf, color, bounds: [[-1.3, -1.2, -1.2], [1.3, 1.3, 1.3]], cell: 0.03, morphs: headMorphs([0.5, -0.32, 0.6]) },
+        ear: roundEar(0.27, "#cf9566", "#f7dcc4"),
+        ears: { dir: [1, 0.06, 0.02], upright: 0.08, splay: 0, sink: 0.1, k: 160, c: 12, floppy: 0.35 },
+        eyes: { dir: [0.27, 0.02, 0.96], r: 0.085 },
+        brows: { color: "#a8714a", lift: 0.18 },
+        nostrils: { dir: [0, -0.22, 1], color: "#b98a6e", gap: 0.045, r: 0.02 },
+        mouth: { dir: [0, -0.42, 0.92], w: 0.17, style: "smile", line: "#9a6a4c", curv: 0.6 },
     };
 })();
 

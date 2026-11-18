@@ -20,8 +20,8 @@ export const ANIMALS = [
     { id: "beaver", name: "Beaver", emoji: "🦫" },
     { id: "lion", name: "Lion", emoji: "🦁" },
     { id: "tiger", name: "Tiger", emoji: "🐯" },
-    { id: "turtle", name: "Turtle", emoji: "🐢" },
-    { id: "shark", name: "Shark", emoji: "🦈" },
+    { id: "koala", name: "Koala", emoji: "🐨" },
+    { id: "monkey", name: "Monkey", emoji: "🐵" },
     { id: "gorilla", name: "Gorilla", emoji: "🦍" },
     { id: "alien", name: "Alien", emoji: "👽" },
     { id: "ghost", name: "Ghost", emoji: "👻" },
@@ -547,8 +547,13 @@ function heartNose(spec, s) {
     for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
         // A rounded inverted triangle.
-        const k = 1 - 0.38 * smooth(0.2 * size, -size, y);
-        p.setXYZ(i, x * k * (spec.wide ?? 1.35), y * 0.8, z * 0.7);
+        if (spec.shape === "oval") {
+            // A big rounded oval, taller than wide (koala).
+            p.setXYZ(i, x * 0.9, y * 1.15, z * 0.62);
+        } else {
+            const k = 1 - 0.38 * smooth(0.2 * size, -size, y);
+            p.setXYZ(i, x * k * (spec.wide ?? 1.35), y * 0.8, z * 0.7);
+        }
     }
     geo.computeVertexNormals();
     const nose = new THREE.Mesh(geo, glossMaterial(spec.color, { roughness: 0.3 }));
