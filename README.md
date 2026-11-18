@@ -1,5 +1,7 @@
 # memoji
 
+![memoji: every face becomes a cute 3D animal](og-image.png)
+
 **memoji** is an Instagram-like photo app where every face turns into a cute 3D animal. Point the camera at yourself and your friends. The face closest to the camera becomes your **spirit animal** and everyone else gets a random one, live, following each head, blink and smile. Take the photo and share it; people can like it, comment on it, follow you and get notified.
 
 It is plain HTML and JavaScript with no build step and no server of its own. Face tracking runs in the browser (WebAssembly + WebGL), and every backend feature runs on [Skapi](https://www.skapi.com): accounts, the database, file storage, followers, realtime messages and push notifications. It installs like a native app (PWA).
