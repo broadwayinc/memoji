@@ -99,7 +99,7 @@ function lockScroll(on) {
 
 /* ================================================================== spirit animals & thumbnails */
 
-const THUMB_VERSION = "v4";
+const THUMB_VERSION = "v5";
 const thumbs = {};
 const thumbQueue = [];
 let thumbBusy = false;
@@ -300,8 +300,8 @@ async function uploadCustomModel(file) {
         status.textContent = "Please choose a .glb, .gltf or .vrm file.";
         return;
     }
-    if (file.size > 25 * 1024 * 1024) {
-        status.textContent = "That file is over 25 MB.";
+    if (file.size > 40 * 1024 * 1024) {
+        status.textContent = "That file is over 40 MB.";
         return;
     }
     const name = file.name.replace(/\.(glb|gltf|vrm)$/i, "").slice(0, 40) || "My model";
@@ -332,9 +332,12 @@ async function uploadCustomModel(file) {
         const id = "custom:" + rec.record_id;
         customModels.unshift({ id, name, record: rec, fit });
         await registerCustomModel(id, buffer, { name, fit });
-        status.textContent = info.morphCount
-            ? `Added "${name}" with ${info.morphCount} face shapes.`
-            : `Added "${name}". It has no morph targets, so it follows your head but not your expressions.`;
+        const what = info.humanoid ? "avatar (cut at the neck)" : "model";
+        status.textContent = info.expressions
+            ? `Added the ${what} "${name}" with ${info.expressions} expressions.`
+            : info.morphCount
+                ? `Added the ${what} "${name}" with ${info.morphCount} face shapes.`
+                : `Added the ${what} "${name}". It has no face shapes, so it follows your head but not your expressions.`;
         await setSpirit(id);
     } catch (err) {
         status.textContent = "Upload failed: " + err.message;
@@ -416,6 +419,7 @@ async function openCamera() {
     try {
         const loading = loadFaceLandmarker();
         await stage.startCamera(facing);
+        syncMirrorButton();
         camHint("Loading the face tracker…");
         prewarmAnimals();
         await loading;
@@ -1420,6 +1424,7 @@ $("shutterButton").onclick = takePhoto;
 $("shuffleButton").onclick = () => stage?.reshuffle();
 $("flipButton").onclick = async () => {
     facing = facing === "user" ? "environment" : "user";
+    if (stage) stage.mirrorPref = null; // each camera starts with its own default: front mirrored, back not
     if (stage?.mode === "live") {
         try {
             await stage.startCamera(facing);
@@ -1427,6 +1432,20 @@ $("flipButton").onclick = async () => {
             camHint(err.message);
         }
     }
+    syncMirrorButton();
+};
+// Mirror: the selfie camera shows (and saves) the picture like a mirror; tap to see it as others do.
+function syncMirrorButton() {
+    const on = !!stage?.mirror;
+    const b = $("mirrorButton");
+    b.setAttribute("aria-pressed", String(on));
+    b.classList.toggle("on", on);
+}
+$("mirrorButton").onclick = () => {
+    if (!stage) return;
+    stage.setMirror(!stage.mirror);
+    syncMirrorButton();
+    toast(stage.mirror ? "Mirror on: like looking in a mirror 🪞" : "Mirror off: as others see you");
 };
 $("lightButton").onclick = () => {
     const b = $("lightButton");

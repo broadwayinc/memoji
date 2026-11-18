@@ -48,6 +48,7 @@
         <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></symbol>
         <symbol id="i-lock" viewBox="0 0 24 24"><path d="M12 2.5a5 5 0 0 0-5 5V10H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7.5a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0V10H9z"/></symbol>
         <symbol id="i-plus" viewBox="0 0 24 24"><path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z"/></symbol>
+        <symbol id="i-mirror" viewBox="0 0 24 24"><path d="M11 2h2v20h-2zM9 6 2 18h7zm6 0v12h7zm1.8 3.9 2.6 6.1h-2.6z"/></symbol>
         <symbol id="i-cube" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7zm0 2.3L5.6 7.8 12 11.3l6.4-3.5zM5 9.5v6.3l6 3.3v-6.3zm14 0-6 3.3v6.3l6-3.3z"/></symbol>
     </svg>
 
@@ -99,6 +100,7 @@
             <div class="cam-title" id="camStatus" role="status">memoji cam</div>
             <div class="cam-top-right">
                 <button type="button" class="cam-btn on" id="lightButton" aria-pressed="true" title="Match the memoji to your lighting"><svg><use href="#i-sun"/></svg></button>
+                <button type="button" class="cam-btn on" id="mirrorButton" aria-pressed="true" title="Mirror: show the selfie camera like a mirror"><svg><use href="#i-mirror"/></svg></button>
                 <button type="button" class="cam-btn" id="flipButton" aria-label="Switch camera"><svg><use href="#i-flip"/></svg></button>
             </div>
         </div>
@@ -205,10 +207,22 @@
 
             <h3>Your own 3D models</h3>
             <p class="hint">
-                Upload a <strong>.glb</strong>, <strong>.gltf</strong> (with embedded data) or <strong>.vrm</strong> head, up to 25 MB.
-                It follows your head; morph targets named like ARKit blendshapes
-                (<code>eyeBlinkLeft</code>, <code>jawOpen</code>, <code>mouthSmileLeft</code>…) follow your face.
+                Upload a <strong>.glb</strong>, <strong>.gltf</strong> (with embedded data) or <strong>.vrm</strong>, up to 40 MB.
+                A head model replaces your head; a full avatar (VRM / VRoid, or any rig with neck and head bones)
+                is cut at the neck so only its head shows. It follows your head, and your face too when it has
+                VRM expressions or morph targets named like ARKit blendshapes
+                (<code>eyeBlinkLeft</code>, <code>jawOpen</code>, <code>mouthSmileLeft</code>…).
                 Only you can see your models.
+            </p>
+            <p class="hint">
+                Free models to try:
+                <a href="https://hub.vroid.com/en/models" target="_blank" rel="noopener">VRoid Hub</a> (anime avatars, .vrm; download the ones whose author allows it) ·
+                <a href="https://vroid.com/en/studio" target="_blank" rel="noopener">VRoid Studio</a> (make your own, free) ·
+                <a href="https://sketchfab.com/search?features=downloadable&amp;q=arkit+blendshapes&amp;type=models" target="_blank" rel="noopener">Sketchfab: ARKit faces</a>
+                and <a href="https://sketchfab.com/search?features=downloadable&amp;q=animal+head&amp;type=models" target="_blank" rel="noopener">animal heads</a> (download as glTF / .glb) ·
+                <a href="https://github.com/mrdoob/three.js/raw/r170/examples/models/gltf/facecap.glb" target="_blank" rel="noopener">facecap.glb</a> (a face with all 52 ARKit shapes) ·
+                <a href="https://github.com/pixiv/three-vrm/raw/dev/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm" target="_blank" rel="noopener">a sample VRM avatar</a>.
+                Check each model's license.
             </p>
             <label class="btn ghost upload-btn">
                 <input type="file" id="modelInput" accept=".glb,.gltf,.vrm,model/gltf-binary,model/gltf+json" hidden>

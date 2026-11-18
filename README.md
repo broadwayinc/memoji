@@ -8,7 +8,15 @@ It is the photo gallery of the Skapi HTML template (`templates-skapi/database.ht
 
 Bunny, bear, hamster, beaver, lion, tiger, turtle, shark, gorilla, alien and a little white sheet ghost. You can also upload your own 3D model (see below).
 
-The heads are made procedurally with three.js, with nothing downloaded: deformed high-resolution spheres, muzzles, cheeks and brow ridges, painted fur, stripes and blush, glossy eyes with lids, brows, mouths with tongues and teeth. Every head follows the 52 ARKit-style blendshapes MediaPipe reports, so they blink, look around, raise their brows, smile, puff their cheeks and open their mouths with you. Ears, antennae, fins, manes and tufts sit on springs and wobble when you move.
+The heads are made procedurally with three.js, with nothing downloaded. Each one is a deformed high-resolution sphere with a muzzle, cheeks and brow ridge, plus painted markings, stripes and blush. On top of that:
+
+- **Real fur:** shell texturing, 10 layers of strands with darker roots, shorter on the muzzle and none on the nose.
+- **Glossy eyes:** detailed irises, lid lines and lashes. The eyes **follow your gaze** (read from where your iris sits between the eye corners) and **blink** when you blink (read from how open each eye is, against your own open eye).
+- **Expressions:** brows, eyelids and a mouth that bends and opens. **Smile**, **laugh**, **sad** (inner brows up, droopy lids, corners down, ears droop), **angry** (brows in a V, lids slanted), **surprised** (brows up, wide eyes, round mouth), **kiss**, wink, cheek puff, nose scrunch.
+- **Mouths:** tongues and teeth (buck teeth, fangs, shark teeth), plus whiskers and nostrils.
+- **Motion:** ears, antennae, fins, manes and tufts sit on springs and wobble when you move.
+
+MediaPipe's raw blendshapes are small and mixed: a big smile also lowers the brows, and `browInnerUp` rises both when sad and when surprised. `readExpression()` in `js/animals.js` turns them into clean expressions, and a slow per-person baseline makes a resting face read as neutral.
 
 ## How it works
 
@@ -27,8 +35,10 @@ Details worth knowing:
 - **Closest face.** The biggest face is the closest. It keeps the spirit animal until another face is clearly (30%) bigger, so it does not flicker between two people.
 - **Lighting.** With the sun button on, the memoji adapt to the camera. The frame's brightness and colour set the ambient light and exposure. The shading on the main face (left cheek against right, forehead against chin) sets the direction of the key light. A blurred copy of the frame is the environment map that the eyes and noses reflect. Turn it off for studio lighting.
 - **Group photos.** For a still photo, the picture is searched again in overlapping tiles, so small faces in the back are found too. A face found in a tile is projected back into the whole picture.
-- **Head placement.** The head centre and size were measured from MediaPipe's canonical face model (x ±7.7 cm, y −9.4…8.3 cm, z −2.4…7.6 cm). The head is centred at (0, −0.6, −1.2) cm with a radius of about 11.3 cm, so it covers the whole face.
-- **What you see is what you post.** The camera shows a 4:5 crop; the photo is that crop, mirrored like the preview for the front camera. Gallery photos keep their shape.
+- **Head placement.** The animal replaces the whole head. Its size was measured from MediaPipe's canonical face model (eyes at y ≈ 2.7 cm, chin −9.4, face width ±7.7, plus room for the crown and hair). The head is centred at (0, 1.4, −2.2) cm with a radius of 13 cm and a taller crown, and a short furry neck covers the join to your neck. Then, every frame, the head slides along the camera ray until its eyes sit exactly in front of your irises. Measured on test photos, the animal's eye midpoint lands on the person's, and all 478 face landmarks are covered.
+- **Mirror.** The selfie camera shows the picture like a mirror, and the photo is saved the same way. The mirror button in the camera turns it off to see yourself as others do. The back camera is never mirrored.
+- **Smooth, not laggy.** Head tracking uses adaptive smoothing: steady when you hold still, quick when you move.
+- **What you see is what you post.** The camera shows a 4:5 crop, and the photo is that crop. Gallery photos keep their shape.
 
 ## Data on Skapi
 
@@ -52,11 +62,36 @@ The views follow the URL hash, as in the template: `#` (recent), `#mostliked`, `
 
 ## Your own 3D models
 
-In your profile (or the **+** at the end of the animal strip in the camera), upload a **.glb**, a **.gltf** with embedded data, or a **.vrm**, up to 25 MB. Draco- and Meshopt-compressed meshes and KTX2 textures are supported.
+In your profile (or the **+** at the end of the animal strip in the camera), upload a **.glb**, a **.gltf** with embedded data, or a **.vrm**, up to 40 MB. Draco- and Meshopt-compressed meshes and KTX2 textures are supported.
 
-- The model is centred and scaled to the size of a head. Then use the **Fit** sliders in the camera (size, up/down, forward/back, turn); the fit is saved with the model.
-- To follow your expressions, give the model **morph targets (shape keys) named like ARKit blendshapes**: `eyeBlinkLeft`, `eyeBlinkRight`, `jawOpen`, `mouthSmileLeft`, `browInnerUp`, `cheekPuff` and the rest of the 52. Names are matched loosely: case, `_` and spaces don't matter, and `Left`/`_L` are the same. A model without morph targets still follows your head.
+- **A head model** is centred and scaled to the size of a head.
+- **A full avatar** has neck and head bones: every VRM / VRoid model, Mixamo-style rigs, and so on. It is cut at the neck, so only its head and hair replace yours. Its size comes from the vertices that move with the head bone, so arms in a T-pose don't count.
+- **Expressions** come from any of these:
+  - the VRM's own expression presets (happy, angry, sad, surprised, blink, blinkLeft/Right, aa, ih, ou, oh), VRM 1.0 and 0.x;
+  - morph targets named like **ARKit blendshapes** (`eyeBlinkLeft`, `jawOpen`, `mouthSmileLeft`, `browInnerUp`… all 52);
+  - VRoid names (`Fcl_EYE_Close_L`, `Fcl_MTH_A`, `Fcl_BRW_Angry`…);
+  - VRChat visemes (`vrc.v_aa`, `vrc.blink_left`).
+
+  Names are matched loosely: prefixes before a dot, case, `_` and spaces don't matter, and `Left`/`_L` are the same.
+- **Eye bones** (VRM `leftEye` / `rightEye`, VRoid `J_Adj_L_FaceEye`) follow your gaze.
+- **Fit sliders** in the camera (size, up/down, forward/back, turn) fine-tune the fit, and it is saved with the model.
 - Models are private records: other people see your posts, never your model files.
+
+Tested with three.js's `facecap.glb` (52 ARKit shapes) and pixiv's `VRM1_Constraint_Twist_Sample.vrm`: cut at the neck, with smile, blink, mouth, angry, sad and gaze all working.
+
+### Where to get free models
+
+| Where | What | Notes |
+| --- | --- | --- |
+| [VRoid Hub](https://hub.vroid.com/en/models) | Thousands of anime avatars as `.vrm`, full expressions | Free account; download only models whose author allows it (shown on each model page). |
+| [VRoid Studio](https://vroid.com/en/studio) | Free app to make your own avatar | Export as VRM; it comes with blink, mouth and emotion expressions. |
+| [Sketchfab: ARKit faces](https://sketchfab.com/search?features=downloadable&q=arkit+blendshapes&type=models) | Heads with the 52 ARKit blendshapes | Free account; choose a free/CC model and download **glTF** or **GLB**. |
+| [Sketchfab: animal heads](https://sketchfab.com/search?features=downloadable&q=animal+head&type=models) | Static animal heads | They follow your head; no expressions unless they have morph targets. |
+| [Quaternius](https://quaternius.com) | CC0 (public domain) low-poly packs, glTF | Characters and animals; full bodies are cut at the neck when they have neck/head bones. |
+| [facecap.glb](https://github.com/mrdoob/three.js/raw/r170/examples/models/gltf/facecap.glb) | three.js example face with all 52 ARKit shapes | Good for a first test. |
+| [VRM sample avatar](https://github.com/pixiv/three-vrm/raw/dev/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm) | pixiv's VRM 1.0 sample | Good for a first test of a full avatar. |
+
+Always check each model's license before posting with it.
 
 ## Running it
 

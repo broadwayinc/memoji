@@ -205,6 +205,15 @@ svg { width: 24px; height: 24px; fill: currentColor; flex: none; }
     margin: 0 auto;
 }
 .tabs::-webkit-scrollbar { display: none; }
+/* Wide screens show every tab; phones scroll them sideways. */
+@media (min-width: 640px) {
+    .tabs {
+        flex-wrap: wrap;
+        justify-content: center;
+        overflow: visible;
+        max-width: 760px;
+    }
+}
 .tabs a {
     flex: none;
     padding: .38rem .9rem;

@@ -19,7 +19,7 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { clone as skeletonClone } from "three/addons/utils/SkeletonUtils.js";
-import { ANIMALS, buildAnimal } from "./animals.js";
+import { ANIMALS, buildAnimal, readExpression, HEAD_CENTER, HEAD_SCALE } from "./animals.js";
 
 export { ANIMALS };
 
@@ -30,6 +30,16 @@ const MAX_FACES = 6;
 const THREE_LIBS = "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/";
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smoothstep = (e0, e1, x) => {
+    const t = clamp((x - e0) / (e1 - e0), 0, 1);
+    return t * t * (3 - 2 * t);
+};
+// Blendshapes that get a per-person neutral baseline taken off (see refineBlendshapes()).
+const CALIBRATED = [
+    "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft", "browOuterUpRight",
+    "mouthFrownLeft", "mouthFrownRight", "mouthSmileLeft", "mouthSmileRight",
+    "eyeSquintLeft", "eyeSquintRight", "eyeWideLeft", "eyeWideRight", "mouthPucker", "mouthShrugLower",
+];
 
 /* ------------------------------------------------------------------ face landmarker */
 
@@ -80,26 +90,75 @@ async function setRunningMode(lm, mode) {
 
 /* ------------------------------------------------------------------ custom models (glTF / GLB / VRM) */
 
-const customModels = new Map(); // id -> { name, template, fit }
+const customModels = new Map(); // id -> { name, template, fit, ... }
 
 /*
-    MediaPipe's blendshape names follow Apple ARKit. A model's morph targets are matched to them
-    loosely: case, "_", "-" and spaces are ignored and Left / Right / _L / _R are the same.
+    A model's morph targets are matched by name, loosely: case, "_", "-", "." and spaces are ignored,
+    and Left / Right / _L / _R are the same. Names understood:
+    - ARKit blendshapes (eyeBlinkLeft, jawOpen, mouthSmileLeft, browInnerUp ... all 52), as MediaPipe reports them;
+    - VRoid / VRM expressions: Fcl_EYE_Close_L, Fcl_MTH_A, Fcl_BRW_Angry, Fcl_ALL_Joy ..., and the VRM
+      presets blink, joy, angry, sorrow, surprised, aa, ih, ou, oh;
+    - VRChat visemes (vrc.v_aa, vrc.blink_left ...).
 */
 function normName(s) {
-    let n = String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+    // "Face_Blendshape.Fcl_EYE_Close_L" and "vrc.blink_left": only the part after the last dot counts.
+    let n = String(s).split(".").pop().toLowerCase().replace(/[^a-z0-9]/g, "");
     n = n.replace(/left$/, "l").replace(/right$/, "r");
-    const alias = { blinkl: "eyeblinkl", blinkr: "eyeblinkr", mouthopen: "jawopen", aa: "jawopen", a: "jawopen", smilel: "mouthsmilel", smiler: "mouthsmiler" };
-    return alias[n] || n;
+    return n;
+}
+
+// The expression channels models other than ARKit ones use, computed from the cleaned-up expression.
+function derivedChannels(e, flags) {
+    const both = Math.min(e.blinkL, e.blinkR);
+    const pos = (v) => Math.max(0, v);
+    const ch = {
+        // ARKit, with the engine's cleaner eye signals.
+        eyeblinkl: e.blinkL, eyeblinkr: e.blinkR,
+        eyelookoutl: pos(e.lookXL), eyelookinl: pos(-e.lookXL), eyelookupl: pos(e.lookYL), eyelookdownl: pos(-e.lookYL),
+        eyelookinr: pos(e.lookXR), eyelookoutr: pos(-e.lookXR), eyelookupr: pos(e.lookYR), eyelookdownr: pos(-e.lookYR),
+        // VRoid
+        fcleyeclosel: e.blinkL, fcleyecloser: e.blinkR, fcleyeclose: flags.eyeLR ? 0 : both,
+        fcleyesurprised: e.surprise * 0.8, fcleyeangry: e.angry * 0.6, fcleyesorrow: e.sad * 0.6,
+        fclbrwangry: e.angry, fclbrwsorrow: e.sad, fclbrwsurprised: e.surprise, fclbrwjoy: e.smile * 0.5,
+        fclmtha: e.jaw * (1 - e.pucker), fclmthi: e.stretch * 0.6, fclmthu: e.pucker, fclmtho: e.funnel, fclmthe: 0,
+        fclmthangry: e.angry * 0.7, fclmthsorrow: e.sad * 0.8 + e.frown * 0.5, fclmthjoy: e.smile, fclmthfun: e.smile * 0.4, fclmthsurprised: e.surprise * e.jaw,
+        fclalljoy: e.smile * 0.8, fclallangry: e.angry, fclallsorrow: e.sad, fclallsurprised: e.surprise, fclallfun: e.smile * 0.4,
+        // VRM presets
+        blink: both, blinkl: e.blinkL, blinkr: e.blinkR, joy: e.smile, happy: e.smile, fun: e.smile * 0.4,
+        angry: e.angry, sorrow: e.sad, sad: e.sad, surprised: e.surprise, a: e.jaw, aa: e.jaw, i: e.stretch * 0.5, ih: e.stretch * 0.5,
+        u: e.pucker, ou: e.pucker, o: e.funnel, oh: e.funnel, mouthopen: e.jaw, smile: e.smile,
+        // VRChat
+        vaa: e.jaw, voh: e.funnel, vou: e.pucker, vih: e.stretch * 0.5,
+    };
+    if (flags.partial) for (const k of Object.keys(ch)) if (k.startsWith("fclall")) ch[k] = 0;
+    return ch;
+}
+
+// Value of a VRM expression preset (VRM 1.0 names and VRM 0.x names) for the expression e.
+function vrmPresetValue(name, e, flags) {
+    switch (name) {
+        case "happy": case "joy": return e.smile;
+        case "fun": return e.smile * 0.3;
+        case "angry": return e.angry;
+        case "sad": case "sorrow": return e.sad;
+        case "surprised": return e.surprise;
+        case "aa": case "a": return e.jaw * (1 - e.pucker * 0.6);
+        case "ih": case "i": return e.stretch * 0.5;
+        case "ou": case "u": return e.pucker;
+        case "oh": case "o": return e.funnel * e.jaw * 1.5;
+        case "blink": return flags.blinkLR ? 0 : Math.min(e.blinkL, e.blinkR);
+        case "blinkl": return e.blinkL;
+        case "blinkr": return e.blinkR;
+        case "lookl": return flags.lookExpr ? Math.max(0, (e.lookXL + e.lookXR) / 2) : 0;
+        case "lookr": return flags.lookExpr ? Math.max(0, -(e.lookXL + e.lookXR) / 2) : 0;
+        case "lookup": return flags.lookExpr ? Math.max(0, (e.lookYL + e.lookYR) / 2) : 0;
+        case "lookdown": return flags.lookExpr ? Math.max(0, -(e.lookYL + e.lookYR) / 2) : 0;
+        default: return 0;
+    }
 }
 
 export const DEFAULT_FIT = { scale: 1, y: 0, z: 0, ry: 0 };
 
-/*
-    Register a custom 3D model from the bytes of a .glb, .gltf (with embedded buffers) or .vrm file.
-    The model is centred and scaled to the size of a head; fit fine-tunes it (scale, up/down,
-    forward/back, turn).
-*/
 let gltfLoader = null;
 // glTF loader that also reads Draco and Meshopt compressed meshes and KTX2 (Basis) textures.
 function getGltfLoader() {
@@ -117,28 +176,175 @@ function getGltfLoader() {
     return gltfLoader;
 }
 
+// Humanoid bones of a VRM (0.x or 1.0) from its JSON, as node names.
+function vrmBones(gltf) {
+    const json = gltf.parser.json;
+    const out = {};
+    const nodes = json.nodes || [];
+    const v0 = json.extensions?.VRM?.humanoid?.humanBones;
+    if (Array.isArray(v0)) for (const b of v0) out[b.bone] = nodes[b.node]?.name;
+    const v1 = json.extensions?.VRMC_vrm?.humanoid?.humanBones;
+    if (v1) for (const [bone, v] of Object.entries(v1)) out[bone] = nodes[v.node]?.name;
+    return out;
+}
+
+function findBoneName(root, test) {
+    let name = null;
+    root.traverse((o) => {
+        if (!name && (o.isBone || o.type === "Object3D") && test(normName(o.name))) name = o.name;
+    });
+    return name;
+}
+
+/*
+    Register a custom 3D model from the bytes of a .glb, .gltf (with embedded buffers) or .vrm file.
+    - A head model is centred and scaled to the size of a head.
+    - A full avatar (it has neck and head bones, like every VRM or VRoid model) is cut at the neck,
+      so only its head and hair replace yours, and that head is what gets centred and scaled.
+    fit fine-tunes it afterwards (scale, up/down, forward/back, turn).
+*/
 export async function registerCustomModel(id, arrayBuffer, { name = "My model", fit = {} } = {}) {
     const loader = getGltfLoader();
     const gltf = await loader.parseAsync(arrayBuffer, "");
     const root = gltf.scene || gltf.scenes?.[0];
     if (!root) throw new Error("The file has no 3D scene.");
     root.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(root);
+    if (new THREE.Box3().setFromObject(root).isEmpty()) throw new Error("The model is empty.");
+
+    const json = gltf.parser.json;
+    const vrm0 = !!json.extensions?.VRM;
+    const hb = vrmBones(gltf);
+    const neckName = hb.neck || findBoneName(root, (n) => /neck$/.test(n) && !/neckend/.test(n));
+    const headName = hb.head || findBoneName(root, (n) => /head$/.test(n) && !/headtop|headend/.test(n));
+    const leftEyeName = hb.leftEye || findBoneName(root, (n) => /(lefteye|eyel|leye|jadjlfaceeye)$/.test(n));
+    const rightEyeName = hb.rightEye || findBoneName(root, (n) => /(righteye|eyer|reye|jadjrfaceeye)$/.test(n));
+
+    // Cut height: a little above the base of the neck.
+    let clipY = null;
+    const neck = neckName && root.getObjectByName(neckName);
+    const head = headName && root.getObjectByName(headName);
+    if (neck && head) {
+        const ny = neck.getWorldPosition(new THREE.Vector3()).y;
+        const hy = head.getWorldPosition(new THREE.Vector3()).y;
+        const full = new THREE.Box3().setFromObject(root);
+        if (hy > ny && full.max.y - full.min.y > (hy - ny) * 4) clipY = ny + (hy - ny) * 0.35;
+    }
+
+    /*
+        The box of what is shown. For an avatar: the vertices that move with the head bone or a bone
+        under it (face, eyes, hair), so arms held out in a T-pose do not count. Otherwise everything.
+    */
+    const box = new THREE.Box3();
+    const v = new THREE.Vector3();
+    if (clipY !== null) {
+        const headBones = new Set();
+        head.traverse((o) => headBones.add(o));
+        root.traverse((o) => {
+            if (!o.isMesh) return;
+            const p = o.geometry.attributes.position;
+            const si = o.geometry.attributes.skinIndex, sw = o.geometry.attributes.skinWeight;
+            const isHead = o.isSkinnedMesh && si && sw ? o.skeleton.bones.map((b) => headBones.has(b)) : null;
+            for (let i = 0; i < p.count; i++) {
+                if (isHead) {
+                    let best = 0, bw = -1;
+                    for (let k = 0; k < 4; k++) {
+                        const w = sw.getComponent(i, k);
+                        if (w > bw) { bw = w; best = si.getComponent(i, k); }
+                    }
+                    if (!isHead[best]) continue;
+                } else if (!headBones.has(o) && !headBones.has(o.parent)) {
+                    continue;
+                }
+                v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+                if (v.y > clipY) box.expandByPoint(v);
+            }
+        });
+        if (box.isEmpty()) clipY = null;
+    }
+    if (clipY === null) box.setFromObject(root);
     if (box.isEmpty()) throw new Error("The model is empty.");
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    const wrapper = new THREE.Group();
-    root.position.sub(center);
-    wrapper.add(root);
-    // A head is about 2.1 units wide in animal space (radius ~1).
-    wrapper.scale.setScalar(2.2 / Math.max(size.x, size.y * 0.85, size.z, 1e-6));
-    let morphCount = 0;
+
+    /*
+        Clipping, for an avatar: keep what is above the neck cut and inside the head's box (with a margin
+        for hair), in the space of the model (after it is centred).
+    */
+    let clipPlanes = null;
+    if (clipY !== null) {
+        const mx = size.x * 0.6, mz = size.z * 0.6;
+        clipPlanes = [
+            new THREE.Plane(new THREE.Vector3(0, 1, 0), -(clipY - center.y)),
+            new THREE.Plane(new THREE.Vector3(-1, 0, 0), mx),
+            new THREE.Plane(new THREE.Vector3(1, 0, 0), mx),
+            new THREE.Plane(new THREE.Vector3(0, 0, -1), mz),
+            new THREE.Plane(new THREE.Vector3(0, 0, 1), mz),
+        ];
+    }
+
+    // VRM expressions (happy, angry, blink, aa ...) bound to morph targets, from the file's own metadata.
+    const nodeNames = {};
     root.traverse((o) => {
-        if (o.isMesh && o.morphTargetDictionary) morphCount += Object.keys(o.morphTargetDictionary).length;
+        const a = gltf.parser.associations.get(o);
+        if (a && a.nodes !== undefined) nodeNames[a.nodes] = o.name;
+    });
+    const vrmExpr = [];
+    const x1 = json.extensions?.VRMC_vrm?.expressions;
+    if (x1) {
+        for (const group of [x1.preset || {}, x1.custom || {}]) {
+            for (const [n, ex] of Object.entries(group)) {
+                const binds = (ex.morphTargetBinds || []).map((b) => ({ node: nodeNames[b.node], index: b.index, weight: b.weight ?? 1 })).filter((b) => b.node);
+                if (binds.length) vrmExpr.push({ name: normName(n), binds });
+            }
+        }
+    }
+    const x0 = json.extensions?.VRM?.blendShapeMaster?.blendShapeGroups;
+    if (Array.isArray(x0)) {
+        for (const gr of x0) {
+            const binds = (gr.binds || []).flatMap((b) => (json.nodes || [])
+                .map((n, i) => (n.mesh === b.mesh ? { node: nodeNames[i], index: b.index, weight: (b.weight ?? 100) / 100 } : null))
+                .filter((x) => x && x.node));
+            const n = gr.presetName && gr.presetName !== "unknown" ? gr.presetName : gr.name;
+            if (binds.length) vrmExpr.push({ name: normName(n), binds });
+        }
+    }
+    const lookType = json.extensions?.VRMC_vrm?.lookAt?.type || json.extensions?.VRM?.firstPerson?.lookAtTypeName || "bone";
+
+    const wrapper = new THREE.Group();
+    const facing = new THREE.Group();
+    // VRM 0.x avatars look down -Z; turn them to face the camera.
+    if (vrm0) facing.rotation.y = Math.PI;
+    root.position.sub(center);
+    facing.add(root);
+    wrapper.add(facing);
+    // A head is about 2.2 units wide in animal space (radius ~1).
+    wrapper.scale.setScalar(2.2 / Math.max(size.x, size.y * 0.85, size.z, 1e-6));
+
+    let morphCount = 0;
+    const names = [];
+    root.traverse((o) => {
+        if (o.isMesh && o.morphTargetDictionary) {
+            for (const k of Object.keys(o.morphTargetDictionary)) {
+                morphCount++;
+                names.push(normName(k));
+            }
+        }
         if (o.isMesh) o.frustumCulled = false;
     });
-    customModels.set(id, { name, template: wrapper, fit: { ...DEFAULT_FIT, ...fit }, morphCount });
-    return { id, name, morphCount };
+    const flags = {
+        eyeLR: names.includes("fcleyeclosel") || names.includes("blinkl"),
+        partial: names.some((n) => n.startsWith("fclbrw") || n.startsWith("fclmth")),
+        blinkLR: vrmExpr.some((x) => x.name === "blinkl") && vrmExpr.some((x) => x.name === "blinkr"),
+        lookExpr: /expression|blendshape/i.test(lookType),
+    };
+    customModels.set(id, {
+        name, template: wrapper, fit: { ...DEFAULT_FIT, ...fit }, morphCount, flags, vrmExpr,
+        clipPlanes,
+        headBox: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(), size),
+        eyes: flags.lookExpr ? [null, null] : [leftEyeName, rightEyeName],
+        humanoid: clipY !== null,
+    });
+    return { id, name, morphCount, humanoid: clipY !== null, expressions: vrmExpr.length, eyes: !!(leftEyeName && rightEyeName) };
 }
 
 export function unregisterCustomModel(id) {
@@ -147,7 +353,7 @@ export function unregisterCustomModel(id) {
 
 export function customModelInfo(id) {
     const m = customModels.get(id);
-    return m ? { id, name: m.name, fit: { ...m.fit }, morphCount: m.morphCount } : null;
+    return m ? { id, name: m.name, fit: { ...m.fit }, morphCount: m.morphCount, humanoid: m.humanoid } : null;
 }
 
 export function setCustomFit(id, fit) {
@@ -159,11 +365,35 @@ function buildCustom(id) {
     const entry = customModels.get(id);
     if (!entry) return buildAnimal("ghost");
     const inst = skeletonClone(entry.template);
+    // Own materials, so the neck cut of one copy does not affect another.
+    const planes = entry.clipPlanes ? entry.clipPlanes.map(() => new THREE.Plane()) : null;
+    const facingG = inst.children[0];
+    const mats = [];
+    inst.traverse((o) => {
+        if (!o.isMesh) return;
+        o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+            if (planes) m.clippingPlanes = planes;
+            mats.push(m);
+        }
+    });
+    // VRM expressions resolved to this copy's meshes.
+    const expr = entry.vrmExpr.map((x) => ({
+        name: x.name,
+        binds: x.binds.flatMap((b) => {
+            const node = inst.getObjectByName(b.node);
+            const meshes = [];
+            node?.traverse((o) => {
+                if (o.isMesh && o.morphTargetInfluences && b.index < o.morphTargetInfluences.length) meshes.push(o);
+            });
+            return meshes.map((mesh) => ({ mesh, index: b.index, weight: b.weight }));
+        }),
+    }));
     const fitG = new THREE.Group();
     fitG.add(inst);
     const holder = new THREE.Group();
-    holder.position.set(0, -0.6, -1.2);
-    holder.scale.setScalar(11.3);
+    holder.position.set(HEAD_CENTER[0], HEAD_CENTER[1], HEAD_CENTER[2]);
+    holder.scale.setScalar(HEAD_SCALE);
     holder.add(fitG);
 
     const targets = new Map(); // normalized name -> [[mesh, index]]
@@ -176,6 +406,14 @@ function buildCustom(id) {
             }
         }
     });
+    // Eye bones turn about the model's own axes (model forward = +Z here), whatever their own orientation.
+    inst.updateWorldMatrix(true, true);
+    const instQ = inst.getWorldQuaternion(new THREE.Quaternion()).invert();
+    const eyeBones = entry.eyes.map((n) => (n ? inst.getObjectByName(n) : null)).map((b) => {
+        if (!b) return null;
+        const rel = instQ.clone().multiply(b.getWorldQuaternion(new THREE.Quaternion()));
+        return { b, rest: b.quaternion.clone(), rel, relInv: rel.clone().invert() };
+    });
     const applyFit = () => {
         const f = entry.fit;
         fitG.scale.setScalar(f.scale);
@@ -183,26 +421,60 @@ function buildCustom(id) {
         fitG.rotation.y = f.ry;
     };
     applyFit();
+    const q = new THREE.Quaternion(), eul = new THREE.Euler();
     return {
         id,
         object: holder,
         custom: true,
         update(bs) {
             applyFit();
-            for (const [name, value] of Object.entries(bs)) {
-                const list = targets.get(normName(name));
-                if (list) for (const [mesh, idx] of list) mesh.morphTargetInfluences[idx] = value;
+            const e = readExpression(bs);
+            if (expr.length) {
+                // A VRM: drive its expression presets.
+                for (const x of expr) for (const b of x.binds) b.mesh.morphTargetInfluences[b.index] = 0;
+                for (const x of expr) {
+                    const val = vrmPresetValue(x.name, e, entry.flags);
+                    if (val > 0) for (const b of x.binds) b.mesh.morphTargetInfluences[b.index] = clamp(b.mesh.morphTargetInfluences[b.index] + val * b.weight, 0, 1);
+                }
+            } else {
+                // Morph targets by name: ARKit, VRoid, VRM presets, VRChat visemes.
+                const derived = derivedChannels(e, entry.flags);
+                const arkit = {};
+                for (const k in bs) if (k[0] !== "_") arkit[normName(k)] = bs[k];
+                for (const [n, list] of targets) {
+                    const val = derived[n] ?? arkit[n];
+                    if (val === undefined) continue;
+                    for (const [mesh, idx] of list) mesh.morphTargetInfluences[idx] = clamp(val, 0, 1);
+                }
+            }
+            // Eyes that are bones (VRM, VRoid) follow the gaze, within VRM's usual range (about 10 degrees).
+            eyeBones.forEach((eb, i) => {
+                if (!eb) return;
+                const lx = i === 0 ? e.lookXL : e.lookXR, ly = i === 0 ? e.lookYL : e.lookYR;
+                eul.set(-ly * 0.15, lx * 0.2, 0);
+                q.setFromEuler(eul);
+                eb.b.quaternion.copy(eb.rest).multiply(eb.relInv.clone().multiply(q).multiply(eb.rel));
+            });
+            if (planes) {
+                facingG.updateWorldMatrix(true, false);
+                const mw = facingG.children[0].parent.matrixWorld;
+                planes.forEach((pl, i) => pl.copy(entry.clipPlanes[i]).applyMatrix4(mw));
             }
         },
+        // The box around the shown head, in world space (for thumbnails).
+        bounds() {
+            holder.updateWorldMatrix(true, true);
+            return entry.headBox.clone().applyMatrix4(inst.matrixWorld);
+        },
         dispose() {
-            // Geometry and materials are shared with the template; nothing to free per instance.
+            mats.forEach((m) => m.dispose());
         },
     };
 }
 
-export function buildRig(id) {
+export function buildRig(id, options) {
     if (String(id).startsWith("custom:")) return buildCustom(id);
-    return buildAnimal(id);
+    return buildAnimal(id, options);
 }
 
 /* ------------------------------------------------------------------ thumbnails */
@@ -215,6 +487,7 @@ function thumbRenderer() {
         const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.NeutralToneMapping;
+        renderer.localClippingEnabled = true;
         renderer.setClearColor(0x000000, 0);
         const scene = new THREE.Scene();
         const pmrem = new THREE.PMREMGenerator(renderer);
@@ -230,23 +503,31 @@ function thumbRenderer() {
     return thumb;
 }
 
-/* Renders a head facing the viewer and returns it as a PNG data URL. */
-export function renderThumbnail(id, size = 160) {
+/*
+    Renders a head facing the viewer and returns it as a PNG data URL.
+    bs: blendshapes to pose it with (a gentle smile by default).
+*/
+export function renderThumbnail(id, size = 160, bs = null, { turn = -0.18, framing = 1.08 } = {}) {
     const { renderer, scene, cam } = thumbRenderer();
     renderer.setSize(size, size, false);
     const rig = buildRig(id);
-    rig.update({ mouthSmileLeft: 0.35, mouthSmileRight: 0.35 }, 1 / 60, null, 0.6);
     const pivot = new THREE.Group();
     pivot.add(rig.object);
-    pivot.rotation.y = -0.18;
+    pivot.rotation.y = turn;
     pivot.rotation.x = 0.05;
     scene.add(pivot);
     pivot.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(pivot);
+    // A portrait of the head: the neck is left out.
+    rig.object.traverse((o) => {
+        if (o.userData.neck) o.visible = false;
+    });
+    rig.update(bs || { mouthSmileLeft: 0.3, mouthSmileRight: 0.3 }, 1 / 60, null, 0.6);
+    pivot.updateMatrixWorld(true);
+    const box = rig.bounds ? rig.bounds() : new THREE.Box3().setFromObject(pivot);
     const c = box.getCenter(new THREE.Vector3());
     const s = box.getSize(new THREE.Vector3());
     const r = Math.max(s.x, s.y) / 2;
-    const dist = (r / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2))) * 1.08;
+    const dist = (r / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2))) * framing;
     cam.position.set(c.x, c.y, c.z + dist + s.z / 2);
     cam.lookAt(c);
     cam.near = dist * 0.2;
@@ -294,6 +575,7 @@ export class MemojiStage {
         renderer.setClearColor(0x000000, 0);
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.NeutralToneMapping;
+        renderer.localClippingEnabled = true; // custom avatars are cut at the neck
         this.renderer = renderer;
 
         this.scene = new THREE.Scene();
@@ -317,6 +599,7 @@ export class MemojiStage {
         this.primary = null;
         this.spirit = "bunny";
         this.mirror = true;
+        this.mirrorPref = null; // the user's choice, when they flipped the mirror themselves
         this.autoLight = true;
         this.mode = "idle"; // "live" | "still" | "idle"
         this.fit = "cover";
@@ -375,13 +658,28 @@ export class MemojiStage {
         this.inner.style.height = ih + "px";
         this.inner.style.left = (vw - iw) / 2 + "px";
         this.inner.style.top = (vh - ih) / 2 + "px";
-        this.inner.style.transform = this.mirror && this.mode === "live" ? "scaleX(-1)" : "none";
+        this.applyMirror();
         if (this.glCanvas.width !== sw || this.glCanvas.height !== sh) {
             this.renderer.setSize(sw, sh, false);
         }
         this.camera.aspect = sw / sh;
         this.camera.updateProjectionMatrix();
         this.view = { scale, iw, ih, vw, vh, sw, sh };
+    }
+
+    /*
+        The selfie camera is shown like a mirror: the picture (video and memoji together) is flipped
+        left to right, so moving your right hand moves the hand on the right of the screen.
+        The photo you take is saved the same way.
+    */
+    applyMirror() {
+        this.inner.style.transform = this.mirror && this.mode === "live" ? "scaleX(-1)" : "none";
+    }
+
+    setMirror(on) {
+        this.mirrorPref = !!on;
+        this.mirror = !!on;
+        this.applyMirror();
     }
 
     // The part of the source picture that is visible in the viewport, in source pixels.
@@ -406,7 +704,10 @@ export class MemojiStage {
         });
         this.stream = stream;
         this.facing = facing;
-        this.mirror = facing === "user";
+        // Front camera = mirror. Phones say which camera they opened; a laptop webcam does not, and faces you.
+        const fm = stream.getVideoTracks()[0]?.getSettings?.().facingMode;
+        const front = fm ? fm !== "environment" : facing === "user";
+        this.mirror = this.mirrorPref ?? front;
         this.video.srcObject = stream;
         await new Promise((res) => {
             if (this.video.readyState >= 1) res();
@@ -678,7 +979,8 @@ export class MemojiStage {
     feedTrack(t, f, now, instant) {
         const m = new THREE.Matrix4().fromArray(f.mat);
         m.decompose(t.tPos, t.tQuat, t.tScl);
-        t.tBs = f.bs;
+        const dt = t.lastSeen ? Math.min(0.2, (now - t.lastSeen) / 1000) : 0;
+        t.tBs = this.refineBlendshapes(t, f, dt, instant || this.mode === "still");
         t.lm = f.lm;
         t.cx = f.cx;
         t.cy = f.cy;
@@ -689,9 +991,78 @@ export class MemojiStage {
             t.pos.copy(t.tPos);
             t.quat.copy(t.tQuat);
             t.scl.copy(t.tScl);
-            t.bs = { ...f.bs };
+            t.bs = { ...t.tBs };
             t.fresh = false;
         }
+    }
+
+    /*
+        Better eyes and a neutral face, on top of MediaPipe's blendshapes:
+        - _blinkLeft/_blinkRight from how open each eye is (lid distance / eye width, against the most
+          open this person's eye has been), which closes the memoji's eyes on a real blink;
+        - _lookX/_lookY per eye from where the iris sits between the eye corners, so the memoji's eyes
+          follow yours;
+        - a slow per-person baseline is taken off brows, frown, smile and squint, so a resting face
+          that MediaPipe reads as slightly cross or sad shows up neutral.
+        "Left" is the person's own left eye, as in MediaPipe.
+    */
+    refineBlendshapes(t, f, dt, still) {
+        const bs = { ...f.bs };
+        const lm = f.lm;
+        const [W, H] = this.sourceSize();
+        if (lm && lm.length >= 478 && W && H) {
+            const P = (i) => [lm[i].x * W, lm[i].y * H];
+            const eye = (left, right, pairs, iris) => {
+                const a = P(left), b = P(right);
+                const ax = b[0] - a[0], ay = b[1] - a[1];
+                const len = Math.hypot(ax, ay) || 1;
+                const ux = ax / len, uy = ay / len;
+                let open = 0;
+                for (const [p, q] of pairs) {
+                    const pp = P(p), qq = P(q);
+                    open += Math.hypot(pp[0] - qq[0], pp[1] - qq[1]);
+                }
+                const ir = P(iris);
+                const dx = ir[0] - (a[0] + b[0]) / 2, dy = ir[1] - (a[1] + b[1]) / 2;
+                return { ear: open / pairs.length / len, lx: (dx * ux + dy * uy) / (len / 2), ly: (dx * uy - dy * ux) / (len / 2) };
+            };
+            const sides = {
+                Left: eye(362, 263, [[385, 380], [387, 373]], 473),
+                Right: eye(33, 133, [[160, 144], [158, 153]], 468),
+            };
+            t.earBase = t.earBase || {};
+            t.gazeBase = t.gazeBase || {};
+            for (const [side, s] of Object.entries(sides)) {
+                const base = still ? 0.2 : (t.earBase[side] = Math.max(s.ear, (t.earBase[side] ?? 0.22) - dt * 0.02, 0.12));
+                const blink = smoothstep(0.75, 0.4, s.ear / base);
+                bs["_blink" + side] = blink;
+                // Gaze, relative to this person's usual eye position (people mostly look at the screen).
+                const gb = t.gazeBase[side] || (t.gazeBase[side] = { x: s.lx, y: s.ly });
+                if (!still && blink < 0.3) {
+                    const k = 1 - Math.exp(-dt / 4);
+                    gb.x += (s.lx - gb.x) * k;
+                    gb.y += (s.ly - gb.y) * k;
+                }
+                const ox = still ? s.lx : s.lx - gb.x, oy = still ? s.ly : s.ly - gb.y;
+                // Model +X is the person's left = the right of the (unmirrored) picture, for both eyes.
+                if (blink < 0.5) {
+                    bs["_lookX" + side] = clamp(ox * 2.2, -1, 1);
+                    bs["_lookY" + side] = clamp(oy * 4, -1, 1);
+                } else if (t.bs?.["_lookX" + side] !== undefined) {
+                    bs["_lookX" + side] = t.bs["_lookX" + side];
+                    bs["_lookY" + side] = t.bs["_lookY" + side];
+                }
+            }
+        }
+        if (!still) {
+            t.calib = t.calib || {};
+            for (const k of CALIBRATED) {
+                if (bs[k] === undefined) continue;
+                const c = (t.calib[k] = Math.min(bs[k], (t.calib[k] ?? 0) + dt * 0.012, 0.25));
+                bs[k] = Math.max(0, bs[k] - c);
+            }
+        }
+        return bs;
     }
 
     dropLostTracks(now) {
@@ -729,8 +1100,7 @@ export class MemojiStage {
     }
 
     updateRigs(dt) {
-        const a = 1 - Math.exp(-dt * 20);
-        const aBs = 1 - Math.exp(-dt * 26);
+        const aBs = 1 - Math.exp(-dt * 28);
         for (const t of this.tracks) {
             const want = t === this.primary ? this.spirit : t.animal;
             if (t.rigId !== want) {
@@ -738,16 +1108,51 @@ export class MemojiStage {
                     t.anchor.remove(t.rig.object);
                     t.rig.dispose();
                 }
-                t.rig = buildRig(want);
+                // Faces in the background get shorter fur (fewer shells): cheaper, and too small to tell.
+                t.rig = buildRig(want, { furLayers: t === this.primary ? undefined : 6 });
                 t.rigId = want;
+                // Where the rig's eyes are, in face space (custom models: about where a head's front is).
+                t.rig.object.updateMatrixWorld(true);
+                const sum = new THREE.Vector3();
+                let n = 0;
+                t.rig.object.traverse((o) => {
+                    if (o.userData.isEye) {
+                        sum.add(o.getWorldPosition(new THREE.Vector3()));
+                        n++;
+                    }
+                });
+                t.rig.eyeMid = n ? sum.divideScalar(n) : new THREE.Vector3(0, HEAD_CENTER[1] + 0.1 * HEAD_SCALE, HEAD_CENTER[2] + 0.93 * HEAD_SCALE);
                 t.anchor.add(t.rig.object);
             }
             const still = this.mode === "still";
-            t.pos.lerp(t.tPos, still ? 1 : a);
-            t.quat.slerp(t.tQuat, still ? 1 : a);
-            t.scl.lerp(t.tScl, still ? 1 : a);
+            /*
+                Adaptive smoothing: steady when the head is still (no jitter), fast when it moves
+                (no lag), like a One Euro filter.
+            */
+            const ap = 1 - Math.exp(-dt * Math.min(60, 12 + t.pos.distanceTo(t.tPos) * 6));
+            const ar = 1 - Math.exp(-dt * Math.min(60, 12 + t.quat.angleTo(t.tQuat) * 120));
+            t.pos.lerp(t.tPos, still ? 1 : ap);
+            t.quat.slerp(t.tQuat, still ? 1 : ar);
+            t.scl.lerp(t.tScl, still ? 1 : ap);
             for (const k in t.tBs) t.bs[k] = (t.bs[k] ?? 0) + (t.tBs[k] - (t.bs[k] ?? 0)) * (still ? 1 : aBs);
             t.anchor.matrix.compose(t.pos, t.quat, t.scl);
+            /*
+                Eye alignment. The animal's eyes sit a few centimetres in front of the person's (the head
+                is bigger and its face is further forward), so for a face away from the centre of the picture
+                they would show up shifted outwards. The head is slid sideways until its eyes lie on the
+                camera ray through the person's irises: on screen the animal looks out of their eyes.
+            */
+            if (t.lm && t.lm.length >= 478 && t.rig.eyeMid) {
+                const [sw, sh] = this.sourceSize();
+                const ea = t.rig.eyeMid.clone().applyMatrix4(t.anchor.matrix);
+                const ix = (t.lm[468].x + t.lm[473].x) / 2, iy = (t.lm[468].y + t.lm[473].y) / 2;
+                const tanH = Math.tan(THREE.MathUtils.degToRad(63 / 2));
+                const want = new THREE.Vector3((ix * 2 - 1) * tanH * (sw / sh), (1 - iy * 2) * tanH, -1).multiplyScalar(-ea.z);
+                const off = want.sub(ea).clampLength(0, 8);
+                t.eyeOff = t.eyeOff || off.clone();
+                t.eyeOff.lerp(off, still ? 1 : ap);
+                t.anchor.matrix.compose(t.pos.clone().add(t.eyeOff), t.quat, t.scl);
+            }
             t.anchor.matrixWorldNeedsUpdate = true;
 
             // Head motion in the head's own frame, for the springy ears.
