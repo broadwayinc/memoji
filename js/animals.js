@@ -249,9 +249,13 @@ function makeEye({ r = 0.09, style = "bead", lidColor = "#ffffff", liner = "#3b2
         const size = 1 + wide * 0.15;
         // A big smile closes the eye into an arc, also when the eyes are shut while smiling (a beaming face).
         const h = clamp(happy, 0, 1);
-        parts.bead.scale.set(size, size * Math.max(0.05, 1 - h), size);
-        for (const g of parts.glints) g.visible = h < 0.5;
-        parts.arc.visible = h > 0.5;
+        // The bead closes as the smile grows and is gone before the arc shows, so no slit of it is left
+        // across the arc.
+        const open = clamp(1 - 2 * h, 0, 1);
+        parts.bead.visible = open > 0.02;
+        parts.bead.scale.set(size, size * Math.max(0.001, open), size);
+        for (const g of parts.glints) g.visible = open > 0.35;
+        parts.arc.visible = !parts.bead.visible;
         parts.arc.scale.setScalar(0.8 + 0.2 * h);
         parts.arc.rotation.z = tiltZ * 0.5;
         // Lids: hidden (rolled back) when relaxed; angry, sad, squint and blink bring them down.
