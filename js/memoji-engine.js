@@ -1157,6 +1157,35 @@ export class MemojiStage {
                 t.eyeOff.lerp(off, still ? 1 : ap);
                 t.anchor.matrix.compose(t.pos.clone().add(t.eyeOff), t.quat, t.scl);
             }
+            /*
+                Chin rule: the animal's chin never shows below the person's chin. Both are compared on screen,
+                along the head's own up direction (so it holds when the head tilts or the mouth opens); if the
+                animal's chin is lower, the head is lifted along that direction until it is not.
+            */
+            if (t.lm && t.lm.length > 152 && t.rig.chin) {
+                const [sw, sh] = this.sourceSize();
+                const px = (v) => {
+                    const n = v.clone().project(this.camera);
+                    return [((n.x + 1) / 2) * sw, ((1 - n.y) / 2) * sh];
+                };
+                const up = new THREE.Vector3(0, 1, 0).applyQuaternion(t.quat);
+                const hx = t.lm[152].x * sw, hy = t.lm[152].y * sh; // the person's chin
+                let lift = 0; // cm, measured on this frame's unlifted pose
+                for (const c of t.rig.chin) {
+                    const ca = c.clone().applyMatrix4(t.anchor.matrix);
+                    const a = px(ca), b = px(ca.clone().addScaledVector(up, 1)); // where 1 cm up goes on screen
+                    const ux = b[0] - a[0], uy = b[1] - a[1];
+                    const perCm = Math.hypot(ux, uy) || 1;
+                    const belowPx = ((hx - a[0]) * ux + (hy - a[1]) * uy) / perCm; // > 0: this point is lower
+                    lift = Math.max(lift, belowPx / perCm);
+                }
+                t.chinLift = (t.chinLift ?? lift) + (lift - (t.chinLift ?? lift)) * (still ? 1 : ap);
+                if (t.chinLift > 0.001) {
+                    const pos = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+                    t.anchor.matrix.decompose(pos, q, sc);
+                    t.anchor.matrix.compose(pos.addScaledVector(up, t.chinLift), q, sc);
+                }
+            }
             t.anchor.matrixWorldNeedsUpdate = true;
 
             // Head motion in the head's own frame, for the springy ears.

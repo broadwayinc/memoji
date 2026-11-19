@@ -81,7 +81,8 @@ To use it on a phone, host the folder on HTTPS, for example with Skapi's website
 
 three.js renders an animal under each pose with MediaPipe's own camera projection (vertical field of view 63°), so the head lands exactly on the face. On top of that:
 
-- **Eyes on eyes.** The animal's eyes sit in front of yours, a few centimetres closer to the camera. Each frame the head slides along the camera ray until its eyes line up with your irises.
+- **Size and place.** The head is sized to your face: its eyes sit at the middle of the head and in front of yours, and its chin ends at your chin. The animal's eyes are a few centimetres closer to the camera than yours, so each frame the head slides along the camera ray until its eyes line up with your irises.
+- **Chin rule.** The animal's chin never shows below your chin. Each frame the underside of the head is checked on screen against your chin, along the head's own up direction, and the head is lifted if needed. This holds when you tilt your head or open your mouth.
 - **Gaze and blinks.** Gaze is read from where each iris sits between the eye corners. Blinks are read from how open each eye is, against your own open eye. Both are more reliable than the raw blendshapes.
 - **Expressions.** `readExpression()` (`js/animals.js`) turns the raw blendshapes into clean smile, sad, angry, surprised and pucker signals. A big smile also lowers the brows, and that is not anger. A slow per-person baseline makes a resting face read as neutral.
 - **Closest face.** The biggest face gets the spirit animal. It keeps it until another face is clearly bigger, so it doesn't flicker between two people.

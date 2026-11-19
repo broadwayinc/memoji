@@ -20,7 +20,7 @@
     Share target: photos shared to memoji from other apps arrive as a POST to ./share-target; the photo is
     kept in a cache and the app opens it in the memoji camera (index.html#shared).
 */
-const VERSION = "memoji-v10";
+const VERSION = "memoji-v11";
 const SHELL_CACHE = VERSION + "-shell";
 const CDN_CACHE = "memoji-cdn-v1";
 const SHARE_CACHE = "memoji-share";

@@ -921,14 +921,15 @@ function buildGhost() {
 
 /*
     Where the head sits in MediaPipe's canonical face space (centimetres, origin inside the head).
-    The canonical face has its eyes at y ≈ 2.7, chin at y ≈ -9.4 and is ±7.7 wide; a real head with
-    hair reaches about 13 to 15 cm above the eyes. The animals have their eyes at the middle of the
-    head, so a head of radius 15 centred at eye height covers from about 14 cm above the eyes to
-    14 cm below (well past the chin) and the full width with hair. The engine then slides it so its
-    eyes are exactly in front of the person's eyes.
+    The canonical face has its eyes at y ≈ 2.7, chin at y ≈ -9.4 (12 cm below the eyes) and is ±7.7
+    wide. The animals have their eyes at the middle of the head, so a head of radius 12.4 centred at
+    eye height reaches about 12 cm above and below the eyes: it covers the face and most of the hair,
+    and its chin ends at the person's chin. The engine then slides it so its eyes are
+    exactly in front of the person's eyes, and lifts it if its chin would show below the person's
+    chin on screen (see rig.chin).
 */
-export const HEAD_CENTER = [0, 2.7, -4.0];
-export const HEAD_SCALE = 15.6;
+export const HEAD_CENTER = [0, 2.7, -3.0];
+export const HEAD_SCALE = 12.4;
 // Custom models (normalised to a head about 2.2 units wide) use the size real heads have.
 export const CUSTOM_CENTER = [0, 1.4, -2.2];
 export const CUSTOM_SCALE = 13.0;
@@ -942,7 +943,23 @@ export function buildAnimal(id) {
     const rig = id === "ghost" ? buildGhost() : buildStandard(id);
     const holder = new THREE.Group();
     holder.position.set(HEAD_CENTER[0], HEAD_CENTER[1], HEAD_CENTER[2]);
-    holder.scale.setScalar(id === "ghost" ? HEAD_SCALE * 0.95 : HEAD_SCALE);
+    const scale = id === "ghost" ? HEAD_SCALE * 0.95 : HEAD_SCALE;
+    holder.scale.setScalar(scale);
     holder.add(rig.object);
-    return { ...rig, object: holder, id };
+    /*
+        The animal's chin: the lowest point of the front of its head, in face space. The engine keeps it
+        from going below the person's chin. The ghost has none: its sheet is meant to hang down.
+    */
+    // Points along the underside of the head, from the front (chin) to below the middle: whichever shows
+    // lowest on screen is the chin there (seen from below, the underside shows).
+    let chin = null;
+    if (id !== "ghost") {
+        const sdf = HEADS[id].head.sdf;
+        chin = [];
+        for (let a = 0.9; a >= -0.2; a -= 0.1) {
+            const sp = surfacePoint(sdf, [0, -1, a]);
+            chin.push(new THREE.Vector3(sp.p[0], sp.p[1], sp.p[2]).multiplyScalar(scale).add(holder.position));
+        }
+    }
+    return { ...rig, object: holder, id, chin };
 }
