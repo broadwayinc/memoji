@@ -59,6 +59,85 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /*
+    The on-screen keyboard must never cover the field you are typing in.
+    - Android Chrome: the viewport tag's interactive-widget=resizes-content makes the page itself shrink
+      above the keyboard.
+    - Everywhere (iPhone Safari included): when a text field is focused, the keyboard's height is measured
+      from the visual viewport, and the field's scroll area (the page, the New post sheet, a panel) is
+      scrolled just enough to show the field above the keyboard. While typing, <html> gets the class
+      "keyboard-open" (the floating bottom bar hides) and the CSS variable --kb holds the keyboard height,
+      so sheets can add room at the bottom to scroll the field up.
+*/
+(function keepFieldAboveKeyboard() {
+    const vv = window.visualViewport;
+    const root = document.documentElement;
+    const FIELD = 'input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="button"]):not([type="submit"]), textarea, select, [contenteditable="true"]';
+    const isField = (el) => !!(el && el.matches && el.matches(FIELD));
+    let fullHeight = window.innerHeight; // the window's height with no keyboard
+    window.addEventListener("orientationchange", () => setTimeout(() => (fullHeight = window.innerHeight), 400));
+
+    function keyboardHeight() {
+        // Keyboard over the page (iOS): the visual viewport is shorter than the layout viewport.
+        const over = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+        // Page resized by the keyboard (Android with resizes-content): the window got shorter.
+        const resized = Math.max(0, fullHeight - window.innerHeight);
+        return Math.max(over, resized);
+    }
+
+    function scrollArea(el) {
+        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+            const oy = getComputedStyle(p).overflowY;
+            if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight + 1) return p;
+        }
+        return document.scrollingElement || document.documentElement;
+    }
+
+    function reveal() {
+        const el = document.activeElement;
+        if (!isField(el)) return;
+        const kb = keyboardHeight();
+        const open = kb > 80;
+        root.style.setProperty("--kb", (open ? kb : 0) + "px");
+        root.classList.toggle("keyboard-open", open);
+        const r = el.getBoundingClientRect();
+        const top = vv ? vv.offsetTop : 0;
+        const visibleBottom = top + (vv ? vv.height : window.innerHeight) - 16; // 16px of breathing room
+        const topbar = document.querySelector(".topbar");
+        const visibleTop = top + (topbar && getComputedStyle(topbar).position === "sticky" && !el.closest(".sheet, .panel") ? topbar.offsetHeight + 8 : 8);
+        let delta = 0;
+        if (r.bottom > visibleBottom) delta = r.bottom - visibleBottom;
+        else if (r.top < visibleTop) delta = r.top - visibleTop;
+        if (Math.abs(delta) > 1) scrollArea(el).scrollBy({ top: delta, behavior: "smooth" });
+    }
+
+    let timers = [];
+    function revealSoon() {
+        timers.forEach(clearTimeout);
+        // The keyboard slides in over a few hundred milliseconds; check as it arrives and once it is up.
+        timers = [60, 250, 500].map((ms) => setTimeout(reveal, ms));
+    }
+
+    document.addEventListener("focusin", (e) => {
+        if (isField(e.target)) revealSoon();
+    });
+    document.addEventListener("focusout", () => {
+        setTimeout(() => {
+            if (!isField(document.activeElement)) {
+                root.classList.remove("keyboard-open");
+                root.style.setProperty("--kb", "0px");
+            }
+        }, 150);
+    });
+    vv?.addEventListener("resize", () => {
+        if (isField(document.activeElement)) revealSoon();
+    });
+    window.addEventListener("resize", () => {
+        if (isField(document.activeElement)) revealSoon();
+        else fullHeight = Math.max(fullHeight, window.innerHeight);
+    });
+})();
+
+/*
     memoji is an installable app (a PWA): the service worker (sw.js) caches it for a fast, offline-able
     start and shows push notifications. It is registered from every page.
 */

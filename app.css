@@ -763,6 +763,16 @@ textarea:focus, input:focus { border-color: var(--accent); }
 .source-link a:hover { color: var(--ink); }
 .source-link svg { width: 18px; height: 18px; }
 
+/* ---------------------------------------------------------- on-screen keyboard (service.js) */
+
+/* While typing, the floating bottom bar steps aside so it never covers the field. */
+html.keyboard-open .bottombar { display: none; }
+html.keyboard-open { scroll-padding-bottom: 16px; }
+/* Room to scroll the New post form and the account pages up above the keyboard. */
+.compose-body { padding-bottom: calc(2rem + var(--kb, 0px)); }
+.panel-card { padding-bottom: calc(1.2rem + env(safe-area-inset-bottom) + var(--kb, 0px)); }
+body.auth-body { padding-bottom: var(--kb, 0px); }
+
 /* ---------------------------------------------------------- install / notifications banner */
 
 .pwa-banner {
@@ -832,4 +842,3 @@ textarea:focus, input:focus { border-color: var(--accent); }
 .auth-hero { display: flex; justify-content: center; gap: .3rem; font-size: 1.9rem; margin: .2rem 0 .4rem; }
 .or { display: flex; align-items: center; gap: .6rem; color: var(--muted); font-size: .8rem; margin: 1.1rem 0 .6rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1.5px; background: var(--line); }
-body.auth-body { padding-bottom: 0; }
