@@ -1209,7 +1209,10 @@ let realtimeReady = null;
 
 function connectRealtime() {
     realtimeReady = skapi.connectRealtime((rt) => {
-        if (rt.type === "private" && rt.message?.app === "memoji") addActivity({ ...rt.message, from: rt.sender, at: Date.now() }, true);
+        // Skapi also delivers a private message back to its sender: only messages from others are news.
+        if (rt.type === "private" && rt.message?.app === "memoji" && rt.sender && rt.sender !== me?.user_id) {
+            addActivity({ ...rt.message, from: rt.sender, at: Date.now() }, true);
+        }
     }).catch((err) => {
         console.warn("Realtime is not available", err);
         realtimeReady = null;
@@ -1257,6 +1260,7 @@ function activityText(a) {
 }
 
 function addActivity(item, live) {
+    if (item.from && item.from === me?.user_id) return; // never your own likes, comments or follows
     const list = readActivity();
     list.unshift({ ...item, unread: true });
     writeActivity(list);
@@ -1399,6 +1403,19 @@ async function syncPushSubscription(force = false) {
     try {
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
+        /*
+            A device's subscription must belong to one account only. If it was registered for another account
+            (someone else logged in here before, or a guest session ended without logging out), that account's
+            notifications would keep arriving on this device. Drop it, so its address stops working, and make
+            a fresh one for the account logged in now.
+        */
+        let owner = null;
+        try { owner = localStorage.getItem("memoji:push-user"); } catch (err) { /* blocked */ }
+        if (sub && owner !== me.user_id) {
+            await sub.unsubscribe().catch(() => { });
+            sub = null;
+            force = true;
+        }
         if (!sub && force) {
             await enablePush();
             return;
